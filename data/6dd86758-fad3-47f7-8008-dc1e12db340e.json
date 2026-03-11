@@ -1,0 +1,97 @@
+{
+  "id": "6dd86758-fad3-47f7-8008-dc1e12db340e",
+  "name": "2025-food-environment-atlas-data",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "Food Environment Atlas data download",
+        "data_type": "text",
+        "sample_values": [
+          "Contact: Alana Rhone ",
+          "Source: USDA, Economic Research Service using data from various sources as documented on the Food Environment Atlas Documentation webpage.",
+          "Recommended Citation: U.S. Department of Agriculture, Economic Research Service. Food Environment Atlas. ",
+          "Notes about the Food Environment Atlas download data:",
+          "This file contains multiple spreadsheets:",
+          "1.  A variable list that includes metadata about all of the variables that are mapped in the Food Environment Atlas.",
+          "2.  Spreadsheets that contain data for each of the Food Environment Atlas categories.",
+          "Notes: Data that were not available, not applicable, or suppressed for specific counties are denoted with N/A or -9999. Counties that didn\u2019t exist in a particular year are referenced with -8888. Indicators are measured at the county level unless noted with an asterisk (*), which signifies a State-level measure. These variables are identified in the Variable Name column in the Variable List tab.",
+          "Release history:",
+          "The original release date of this file is July 2025."
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {}
+      }
+    ],
+    "row_count": 10,
+    "file_name": "2025-food-environment-atlas-data.xlsx",
+    "file_size": 9104656
+  },
+  "slides": [
+    {
+      "id": "1aa90bc4-6538-4d73-ad61-2e31598176eb",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "5f632967-0150-411b-97c5-3e66d51d1b95",
+          "config": {
+            "visualization_type": "scatter_plot",
+            "title": "New Scatter Plot",
+            "x_column": "Food Environment Atlas data download",
+            "y_column": null,
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "Testing 2",
+          "data_snapshot": null
+        },
+        {
+          "id": "625f6bb9-d6ed-4cef-bb57-cd0a5ede0a3c",
+          "config": {
+            "visualization_type": "area_chart",
+            "title": "New Area Chart",
+            "x_column": "Food Environment Atlas data download",
+            "y_column": null,
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-10T01:22:00.724914",
+      "updated_at": "2026-03-10T01:26:45.109284"
+    }
+  ],
+  "created_at": "2026-03-10T01:22:00.724892",
+  "updated_at": "2026-03-10T01:23:21.463223",
+  "file_path": "2025-food-environment-atlas-data.xlsx"
+}
