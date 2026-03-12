@@ -115,10 +115,6 @@ def render_analysis_history(
 
 def render_export_dialog(analysis, on_export: Callable) -> None:
     """Render the export dialog."""
-    from domain.entities import Analysis
-    from domain.value_objects import ExportOptions
-    import base64
-
     st.markdown("## 📤 Export Analysis")
     st.markdown(f"**Analysis:** {analysis.name}")
     st.markdown(f"**Slides:** {len(analysis.slides)}")
