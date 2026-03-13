@@ -29,8 +29,9 @@ This application follows Clean Architecture principles (SOLID and GRASP):
 
 ```
 dashboard_builder/
+├── .venv/                    # UV virtual environment
 ├── app.py                    # Main Streamlit entry point
-├── requirements.txt          # Python dependencies
+├── pyproject.toml            # Python dependencies
 ├── domain/                   # Domain layer (entities, value objects)
 │   ├── __init__.py
 │   ├── entities.py          # Core business entities
@@ -68,25 +69,21 @@ dashboard_builder/
 
 1. Create and activate the virtual environment:
    ```bash
-   cd /home/z/my-project/dashboard_builder
+   cd /raiz/do/projeto
    python3 -m venv venv
    source venv/bin/activate
    ```
 
 2. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
+Desse modo, o gerenciador de pacotes UV lerá as dependências no arquivo pyproject.toml, e instalará no ambiente virtual.
 
 ## Running the Application
 
 ```bash
 ./run.sh
-```
-
-Or directly with:
-```bash
-./venv/bin/streamlit run app.py --server.port 8501
 ```
 
 The application will be available at http://localhost:8501
