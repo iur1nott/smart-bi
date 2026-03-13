@@ -4,12 +4,12 @@ from .sidebar import render_sidebar, render_secondary_sidebar, render_file_uploa
 from .canvas import (
     render_canvas,
     render_visualization,
-    render_visualization_editor,
+    # render_visualization_editor,
     render_slide_navigator,
 )
 from .widgets import (
     render_widget_palette,
-    render_visualization_config,
+    # render_visualization_config,
     render_data_preview,
 )
 from .components import (

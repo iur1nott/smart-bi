@@ -94,7 +94,7 @@ def render_analysis_history(
                     try:
                         dt = datetime.fromisoformat(updated)
                         st.caption(f"Updated: {dt.strftime('%Y-%m-%d %H:%M')}")
-                    except:
+                    except Exception:
                         pass
 
             with col2:

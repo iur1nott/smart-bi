@@ -44,7 +44,7 @@ from presentation.sidebar import render_sidebar, render_secondary_sidebar
 from presentation.canvas import render_canvas, render_slide_navigator
 from presentation.widgets import (
     render_widget_palette,
-    render_visualization_config,
+    # render_visualization_config,
     render_data_preview,
 )
 from presentation.components import (
@@ -295,29 +295,20 @@ class DashboardBuilderApp:
             if df is not None:
                 render_data_preview(current_analysis.data_schema, df)
 
-        # Add visualization section
-        st.markdown("### ➕ Add Visualization")
+        # Widget palette
+        from presentation.widgets import render_widget_palette
 
-        # Chart type buttons
-        chart_types = [
-            ("📊 Bar", VisualizationType.BAR_CHART),
-            ("📈 Line", VisualizationType.LINE_CHART),
-            ("🥧 Pie", VisualizationType.PIE_CHART),
-            ("📉 Area", VisualizationType.AREA_CHART),
-            ("⚬ Scatter", VisualizationType.SCATTER_PLOT),
-            ("▊ Histogram", VisualizationType.HISTOGRAM),
-            ("📦 Box", VisualizationType.BOX_PLOT),
-            ("📋 Table", VisualizationType.TABLE),
-            ("💳 Metric", VisualizationType.METRIC_CARD),
-        ]
+        render_widget_palette(
+            current_analysis.data_schema, self._start_visualization_config
+        )
 
-        cols = st.columns(3)
-        for i, (label, viz_type) in enumerate(chart_types):
-            with cols[i % 3]:
-                if st.button(
-                    label, key=f"add_{viz_type.value}", use_container_width=True
-                ):
-                    self._on_add_visualization(viz_type)
+        # Check if we're configuring a new visualization
+        if get_state("configuring_new_viz"):
+            self._render_config_dialog()
+
+        # Check if we're editing an existing visualization
+        if get_state("editing_viz_id"):
+            self._render_edit_config_dialog()
 
     def _render_uploader_dialog(self) -> None:
         """Render file uploader dialog."""
@@ -421,55 +412,121 @@ class DashboardBuilderApp:
         """Handle settings save."""
         self.analysis_service.update_settings(settings)
 
-    def _on_add_visualization(self, viz_type: VisualizationType) -> None:
-        """Handle adding a new visualization."""
+    def _start_visualization_config(self, viz_type: VisualizationType) -> None:
+        """Start configuration for a new visualization."""
+        set_state("configuring_new_viz", viz_type)
+
+    def _render_config_dialog(self) -> None:
+        """Render the configuration dialog for a new visualization."""
+        viz_type = get_state("configuring_new_viz")
+        current_analysis = self.analysis_service.get_current_analysis()
+
+        if not viz_type or not current_analysis or not current_analysis.data_schema:
+            return
+
+        st.markdown("---")
+
+        from presentation.widgets import render_visualization_config_dialog
+
+        config = render_visualization_config_dialog(
+            viz_type=viz_type,
+            data_schema=current_analysis.data_schema,
+            on_save=lambda cfg: self._create_visualization_with_config(viz_type, cfg),
+            on_cancel=self._cancel_config,
+            is_new=True,
+        )
+
+    def _render_edit_config_dialog(self) -> None:
+        """Render the configuration dialog for editing an existing visualization."""
+        viz_id = get_state("editing_viz_id")
+        slide_id = get_state("editing_slide_id")
+
+        if not viz_id:
+            return
+
+        current_analysis = self.analysis_service.get_current_analysis()
+        if not current_analysis or not current_analysis.data_schema:
+            return
+
+        # Find the visualization
+        viz = None
+        for slide in current_analysis.slides:
+            for v in slide.visualizations:
+                if v.id == viz_id:
+                    viz = v
+                    break
+
+        if not viz or not viz.config:
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            return
+
+        st.markdown("---")
+
+        from presentation.widgets import render_visualization_config_dialog
+
+        def on_save(new_config):
+            self.analysis_service.update_visualization(
+                slide_id, viz_id, config=new_config
+            )
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            self.analysis_service.save_current_analysis()
+            st.success("✓ Visualization updated!")
+            st.rerun()
+
+        def on_cancel():
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            st.rerun()
+
+        render_visualization_config_dialog(
+            viz_type=viz.config.visualization_type,
+            data_schema=current_analysis.data_schema,
+            existing_config=viz.config,
+            on_save=on_save,
+            on_cancel=on_cancel,
+            is_new=False,
+        )
+
+    def _create_visualization_with_config(
+        self, viz_type: VisualizationType, config: VisualizationConfig
+    ) -> None:
+        """Create a visualization with the specified configuration."""
         current_slide = self.analysis_service.get_current_slide()
         current_analysis = self.analysis_service.get_current_analysis()
 
-        if (
-            not current_slide
-            or not current_analysis
-            or not current_analysis.data_schema
-        ):
-            st.warning("Please upload data first")
+        if not current_slide or not current_analysis:
             return
 
-        # Create default config
-        numeric_cols = current_analysis.data_schema.get_numeric_columns()
-        categorical_cols = current_analysis.data_schema.get_categorical_columns()
-        all_cols = current_analysis.data_schema.get_column_names()
-
-        # Set default columns based on type
-        x_col = (
-            categorical_cols[0]
-            if categorical_cols
-            else all_cols[0]
-            if all_cols
-            else None
-        )
-        y_col = numeric_cols[0] if numeric_cols else None
-
-        config = VisualizationConfig(
-            visualization_type=viz_type,
-            title=f"New {viz_type.value.replace('_', ' ').title()}",
-            x_column=x_col,
-            y_column=y_col,
-            aggregation="sum",
-        )
-
-        # Add visualization
+        # Add visualization with the config
         viz = self.analysis_service.add_visualization(current_slide.id, config)
 
         if viz:
             # Store data snapshot for tables
             df = self.data_service.get_cached_data(current_analysis.id)
             if df is not None and viz_type == VisualizationType.TABLE:
+                all_cols = current_analysis.data_schema.get_column_names()
                 data = df.head(100).to_pandas().to_dict(orient="records")
                 viz.data_snapshot = {"data": data, "columns": all_cols[:10]}
-                self.analysis_service.save_current_analysis()
 
-            st.success(f"Added {viz_type.value}")
-            st.rerun()
+            self.analysis_service.save_current_analysis()
+
+        # Clear config state
+        set_state("configuring_new_viz", None)
+        st.success(f"✓ Added {viz_type.value.replace('_', ' ').title()}")
+        st.rerun()
+
+    def _cancel_config(self) -> None:
+        """Cancel the configuration dialog."""
+        set_state("configuring_new_viz", None)
+        set_state("editing_viz_id", None)
+        set_state("editing_slide_id", None)
+        st.rerun()
+
+    def _on_add_visualization(self, viz_type: VisualizationType) -> None:
+        """Start adding a new visualization - shows config dialog."""
+        set_state("configuring_new_viz", viz_type)
 
     def _on_update_visualization(
         self, slide_id: str, viz_id: str, config: VisualizationConfig
