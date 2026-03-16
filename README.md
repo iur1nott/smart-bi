@@ -1,124 +1,200 @@
 # Dashboard Builder
 
-A Streamlit web application that allows data analysts with little to no knowledge of Excel to build dashboards, tables, and write comments, similar to a simpler and more intuitive Power BI, with PDF export functionality.
+A professional Streamlit application for building dashboards from Excel data, built with Clean Architecture principles.
 
 ## Features
 
-- **XLSX File Upload**: Upload Excel files to start building dashboards
-- **Automatic Column Type Detection**: Automatically identifies categorical and numerical columns
-- **Multiple Visualization Types**:
-  - Bar Charts
-  - Line Charts
-  - Pie Charts
-  - Area Charts
-  - Scatter Plots
-  - Histograms
-  - Box Plots
-  - Heatmaps
-  - Tables
-  - Metric Cards
-- **Slide Management**: Create and manage multiple slides/pages
-- **Comments**: Add comments to any visualization
-- **Export to PDF/LaTeX/HTML**: Export your dashboards to various formats
-- **Analysis History**: Keep track of previous analyses
-- **Settings**: Customize appearance and export options
+- **📊 Data Visualization**: Multiple chart types (bar, line, pie, scatter, heatmap, etc.)
+- **📋 Interactive Tables**: Sortable and filterable data tables
+- **💬 Comments**: Add comments to visualizations
+- **📄 Export**: LaTeX to PDF export with professional formatting
+- **🔐 Authentication**: Secure user authentication with JWT
+- **💾 Persistence**: PostgreSQL database for user data and history
 
-## Architecture
+## Quick Start
 
-This application follows Clean Architecture principles (SOLID and GRASP):
+### Using Docker (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/dashboard-builder.git
+cd dashboard-builder
+
+# Copy environment file
+cp .env.example .env
+
+# Start development environment
+docker-compose --profile dev up
+
+# Or start production environment
+docker-compose --profile prod up
+```
+
+### Using UV (Local Development)
+
+[UV](https://docs.astral.sh/uv/) is a fast Python package manager that replaces pip, pip-tools, and virtualenv.
+
+```bash
+# Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv sync
+
+# Install development dependencies
+uv sync --dev
+
+# Run the application
+streamlit run app.py
+```
+
+## Project Structure
 
 ```
 dashboard_builder/
-├── .venv/                    # UV virtual environment
-├── app.py                    # Main Streamlit entry point
-├── pyproject.toml            # Python dependencies
-├── domain/                   # Domain layer (entities, value objects)
-│   ├── __init__.py
-│   ├── entities.py          # Core business entities
-│   └── value_objects.py     # Value objects
-├── use_cases/               # Application layer
-│   ├── __init__.py
-│   ├── analysis_service.py  # Analysis management
-│   ├── export_service.py    # PDF export service
-│   └── data_service.py      # Data processing service
-├── infrastructure/          # Infrastructure layer
-│   ├── __init__.py
-│   ├── chart_factory.py     # Chart creation
-│   └── pdf_generator.py     # PDF generation
-├── presentation/            # Presentation layer
-│   ├── __init__.py
-│   ├── sidebar.py          # Sidebar components
-│   ├── canvas.py           # Main canvas/slide area
-│   ├── widgets.py          # Visualization widgets
-│   └── components.py       # UI components
-├── utils/
-│   ├── __init__.py
-│   └── session_state.py    # Session state management
-└── data/                    # Data storage directory
+├── app.py                    # Main application entry point
+├── pyproject.toml            # Project configuration (UV/pip)
+├── uv.lock                   # Locked dependencies
+├── Dockerfile                # Production Docker image
+├── Dockerfile.dev            # Development Docker image
+├── docker-compose.yml        # Docker services configuration
+│
+├── domain/                   # Domain Layer (Pure Business Logic)
+│   ├── entities.py           # Core business entities
+│   ├── value_objects.py      # Immutable value objects
+│   └── repositories.py       # Repository interfaces
+│
+├── use_cases/                # Use Cases Layer (Application Logic)
+│   ├── auth_service.py       # Authentication operations
+│   ├── analysis_service.py   # Analysis management
+│   ├── data_service.py       # Data processing
+│   └── export_service.py     # Export operations
+│
+├── infrastructure/           # Infrastructure Layer
+│   ├── database.py           # PostgreSQL connection
+│   ├── models.py             # SQLAlchemy models
+│   ├── repositories/         # Repository implementations
+│   ├── auth/                 # JWT and password handling
+│   └── chart_factory.py      # Chart generation
+│
+├── presentation/             # Presentation Layer (Streamlit UI)
+│   ├── login.py              # Authentication UI
+│   ├── sidebar.py            # Main navigation
+│   ├── widget_palette.py     # Visualization widgets
+│   ├── canvas.py             # Slide editing
+│   └── components.py         # UI components
+│
+├── .streamlit/
+│   └── config.toml           # Streamlit configuration
+│
+├── data/                     # Persistent data storage
+├── download/                 # Generated exports
+└── tests/                    # Test suite
 ```
 
-## Technology Stack
+## Architecture
 
-- **Streamlit**: Web framework for the UI
-- **Polars**: High-performance DataFrame library for data processing
-- **Plotly**: Interactive charting library
-- **ReportLab**: PDF generation
-- **LaTeX**: LaTeX document generation for export
+The application follows Clean Architecture principles:
 
-## Installation
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     PRESENTATION LAYER                          │
+│    Streamlit UI components, dialogs, and navigation            │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      USE CASES LAYER                            │
+│    Business logic and application services                      │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       DOMAIN LAYER                              │
+│    Pure business entities, value objects, and interfaces        │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   INFRASTRUCTURE LAYER                          │
+│    PostgreSQL, SQLAlchemy, JWT, external integrations           │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-1. Create and activate the virtual environment:
-   ```bash
-   cd /raiz/do/projeto
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+## Development
 
-2. Install dependencies:
-   ```bash
-   uv sync
-   ```
-Desse modo, o gerenciador de pacotes UV lerá as dependências no arquivo pyproject.toml, e instalará no ambiente virtual.
-
-## Running the Application
+### Running Tests
 
 ```bash
-./run.sh
+# With UV
+uv run pytest
+
+# With coverage
+uv run pytest --cov=domain --cov=use_cases --cov-report=html
 ```
 
-The application will be available at http://localhost:8501
+### Code Quality
 
-## Usage
+```bash
+# Format code
+uv run black .
+uv run isort .
 
-1. **Start New Analysis**: Click "➕ New" in the sidebar to start a new analysis
-2. **Upload XLSX File**: Select and upload an Excel file
-3. **Add Visualizations**: Use the widget sidebar to add charts, tables, or metric cards
-4. **Configure Charts**: Set X-axis, Y-axis, colors, and other options
-5. **Add Comments**: Add comments to any visualization
-6. **Manage Slides**: Add, delete, or navigate between slides
-7. **Export**: Click "Export" to generate PDF, LaTeX, or HTML output
+# Type checking
+uv run mypy domain/ use_cases/ infrastructure/ presentation/
 
-## Clean Architecture Layers
+# Linting
+uv run ruff check .
+```
 
-### Domain Layer
-- **Entities**: Analysis, Slide, Visualization, UserSession
-- **Value Objects**: ColumnType, VisualizationType, ExportFormat, ChartColors
+### Database Migrations
 
-### Use Cases Layer
-- **AnalysisService**: Manages analysis sessions and slides
-- **DataService**: Handles data loading, filtering, and aggregation
-- **ExportService**: Handles export to various formats
+```bash
+# Create migration
+alembic revision --autogenerate -m "description"
 
-### Infrastructure Layer
-- **ChartFactory**: Creates Plotly charts
-- **PDFGenerator**: Generates PDFs using ReportLab
+# Apply migrations
+alembic upgrade head
+```
 
-### Presentation Layer
-- **sidebar.py**: Main sidebar with actions, history, and settings
-- **canvas.py**: Slide editing area
-- **widgets.py**: Visualization configuration forms
-- **components.py**: Reusable UI components
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `JWT_SECRET_KEY` | Secret key for JWT tokens | Required |
+| `POSTGRES_USER` | PostgreSQL username | `dashboard_user` |
+| `POSTGRES_PASSWORD` | PostgreSQL password | Required |
+| `POSTGRES_DB` | Database name | `dashboard_builder` |
+
+## Docker Profiles
+
+### Development Profile
+```bash
+docker-compose --profile dev up
+```
+- Hot reload enabled
+- pgAdmin available at port 5050
+- Source mounted as volume
+
+### Production Profile
+```bash
+docker-compose --profile prod up
+```
+- Optimized build
+- No development tools
+- Minimal image size
 
 ## License
 
-MIT License
+MIT License - See LICENSE file for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and linting
+5. Submit a pull request

@@ -16,7 +16,7 @@ class SessionStateManager:
     Provides a centralized interface for state management.
     """
 
-    STATE_FILE = "/home/z/my-project/dashboard_builder/data/session.json"
+    STATE_FILE = "data/session.json"
 
     # Default state keys and values
     DEFAULT_STATE = {
@@ -180,9 +180,7 @@ class SessionStateManager:
         return notifications
 
     @classmethod
-    def update_current_analysis(
-        cls, analysis_id: str, slide_id: Optional[str] = None
-    ) -> None:
+    def update_current_analysis(cls, analysis_id: str, slide_id: Optional[str] = None) -> None:
         """
         Update current analysis and slide IDs.
 

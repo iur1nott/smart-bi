@@ -1,6 +1,42 @@
 [theme]
-primaryColor = "#10B981" #"#007BFF" # Cor da sua marca
+primaryColor = "#10B981"
 backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#EEEFF0" #"#F8F9FA"
+secondaryBackgroundColor = "#EEEFF0"
 textColor = "#1E293B"
 font = "sans serif"
+
+[server]
+port = 8501
+address = "0.0.0.0"
+headless = true
+runOnSave = true
+fileWatcherType = "poll"
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[runner]
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
+postScript = ""
+fastReruns = true
+enforceSerializableSessionState = false
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s %(message)s"
+
+[deprecation]
+showfileUploaderEncoding = true
+showPyplotGlobalUse = true
+showImageFormat = true

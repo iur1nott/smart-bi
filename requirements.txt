@@ -1,0 +1,5 @@
+# Dashboard Builder - Dependencies (managed by UV)
+# This file is auto-generated from pyproject.toml
+# Use `uv sync` to install dependencies
+
+-r pyproject.toml

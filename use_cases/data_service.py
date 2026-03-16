@@ -1,6 +1,6 @@
 """
-Data Service - Handles data processing and transformation operations.
-Follows Single Responsibility Principle - only handles data operations.
+Data Service - Handles data loading, processing, and transformation.
+Implements business logic for working with Excel files and data operations.
 """
 
 from typing import Dict, List, Any, Optional, Tuple
@@ -8,6 +8,8 @@ import polars as pl
 from pathlib import Path
 import tempfile
 import os
+import io
+import logging
 
 from domain.entities import (
     Analysis,
@@ -17,9 +19,10 @@ from domain.entities import (
     Visualization,
     VisualizationConfig,
     VisualizationType,
-    Slide,
 )
 from domain.value_objects import FilterCondition, AggregationConfig
+
+logger = logging.getLogger(__name__)
 
 
 class DataService:
@@ -32,7 +35,7 @@ class DataService:
     """
 
     def __init__(self):
-        """Initialize the data service."""
+        """Initialize the data service with a data cache."""
         self._data_cache: Dict[str, pl.DataFrame] = {}
 
     def load_excel_file(
@@ -48,14 +51,14 @@ class DataService:
         Returns:
             Tuple of DataSchema and Polars DataFrame
         """
-        # Read the Excel file using Polars
         df = pl.read_excel(file_path)
-
-        # Cache the dataframe
         self._data_cache[analysis_id] = df
 
-        # Generate schema
-        schema = self._infer_schema(df, file_path)
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        file_name = os.path.basename(file_path)
+
+        schema = self._infer_schema(df, file_name, file_size)
+        logger.info(f"Loaded Excel file: {file_name} with {len(df)} rows")
 
         return schema, df
 
@@ -73,7 +76,6 @@ class DataService:
         Returns:
             Tuple of DataSchema and Polars DataFrame
         """
-        # Write bytes to temporary file
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
@@ -82,9 +84,51 @@ class DataService:
             df = pl.read_excel(tmp_path)
             self._data_cache[analysis_id] = df
             schema = self._infer_schema(df, file_name, len(file_bytes))
+            logger.info(f"Loaded Excel from bytes: {file_name} with {len(df)} rows")
             return schema, df
         finally:
-            os.unlink(tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def load_excel_from_streamlit(
+        self, uploaded_file: Any, analysis_id: str
+    ) -> Tuple[DataSchema, pl.DataFrame]:
+        """
+        Load an Excel file from a Streamlit UploadedFile object.
+
+        Args:
+            uploaded_file: Streamlit UploadedFile object
+            analysis_id: ID of the analysis for caching
+
+        Returns:
+            Tuple of DataSchema and Polars DataFrame
+        """
+        file_bytes = uploaded_file.getvalue()
+        return self.load_excel_from_bytes(file_bytes, uploaded_file.name, analysis_id)
+
+    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+        """
+        Get cached DataFrame for an analysis.
+
+        Args:
+            analysis_id: The analysis ID
+
+        Returns:
+            Cached DataFrame or None if not found
+        """
+        return self._data_cache.get(analysis_id)
+
+    def clear_cache(self, analysis_id: Optional[str] = None) -> None:
+        """
+        Clear cached data for specific analysis or all.
+
+        Args:
+            analysis_id: Optional specific analysis ID to clear
+        """
+        if analysis_id:
+            self._data_cache.pop(analysis_id, None)
+        else:
+            self._data_cache.clear()
 
     def _infer_schema(
         self, df: pl.DataFrame, file_name: str, file_size: int = 0
@@ -106,10 +150,7 @@ class DataService:
             col_series = df[col_name]
             col_type = self._detect_column_type(col_series)
 
-            # Get sample values
             sample_values = col_series.drop_nulls().head(10).to_list()
-
-            # Calculate statistics
             statistics = self._calculate_statistics(col_series, col_type)
 
             column = Column(
@@ -123,7 +164,10 @@ class DataService:
             columns.append(column)
 
         return DataSchema(
-            columns=columns, row_count=len(df), file_name=file_name, file_size=file_size
+            columns=columns,
+            row_count=len(df),
+            file_name=file_name,
+            file_size=file_size,
         )
 
     def _detect_column_type(self, series: pl.Series) -> ColumnType:
@@ -138,8 +182,8 @@ class DataService:
         """
         dtype = series.dtype
 
-        # Check Polars dtype
-        if dtype in [
+        # Check Polars dtype for numeric types
+        numeric_dtypes = [
             pl.Int8,
             pl.Int16,
             pl.Int32,
@@ -150,18 +194,20 @@ class DataService:
             pl.UInt64,
             pl.Float32,
             pl.Float64,
-        ]:
+        ]
+        if dtype in numeric_dtypes:
             return ColumnType.NUMERIC
 
+        # Check for datetime types
         if dtype in [pl.Date, pl.Datetime, pl.Time]:
             return ColumnType.DATETIME
 
+        # Check for boolean
         if dtype == pl.Boolean:
             return ColumnType.BOOLEAN
 
-        # For string types, try to infer further
-        if dtype == pl.String or dtype == pl.Utf8:
-            # Check if it could be categorical
+        # For string types, infer further
+        if dtype in [pl.String, pl.Utf8]:
             null_count = series.null_count()
             non_null_count = len(series) - null_count
 
@@ -194,10 +240,10 @@ class DataService:
         import re
 
         date_patterns = [
-            r"^\d{4}-\d{2}-\d{2}",  # YYYY-MM-DD
-            r"^\d{2}/\d{2}/\d{4}",  # MM/DD/YYYY or DD/MM/YYYY
-            r"^\d{2}-\d{2}-\d{4}",  # DD-MM-YYYY
-            r"^\d{4}/\d{2}/\d{2}",  # YYYY/MM/DD
+            r"^\d{4}-\d{2}-\d{2}",
+            r"^\d{2}/\d{2}/\d{4}",
+            r"^\d{2}-\d{2}-\d{4}",
+            r"^\d{4}/\d{2}/\d{2}",
         ]
 
         if not values:
@@ -256,17 +302,6 @@ class DataService:
 
         return stats
 
-    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
-        """Get cached DataFrame for an analysis."""
-        return self._data_cache.get(analysis_id)
-
-    def clear_cache(self, analysis_id: Optional[str] = None):
-        """Clear cached data for specific analysis or all."""
-        if analysis_id:
-            self._data_cache.pop(analysis_id, None)
-        else:
-            self._data_cache.clear()
-
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]
     ) -> pl.DataFrame:
@@ -304,13 +339,11 @@ class DataService:
             elif f.operator == "ends_with":
                 result = result.filter(col.str.ends_with(str(f.value)))
             elif f.operator == "in":
-                result = result.filter(
-                    col.is_in(f.value if isinstance(f.value, list) else [f.value])
-                )
+                values = f.value if isinstance(f.value, list) else [f.value]
+                result = result.filter(col.is_in(values))
             elif f.operator == "not_in":
-                result = result.filter(
-                    ~col.is_in(f.value if isinstance(f.value, list) else [f.value])
-                )
+                values = f.value if isinstance(f.value, list) else [f.value]
+                result = result.filter(~col.is_in(values))
             elif f.operator == "is_null":
                 result = result.filter(col.is_null())
             elif f.operator == "is_not_null":
@@ -447,11 +480,18 @@ class DataService:
         elif config.visualization_type == VisualizationType.METRIC_CARD:
             if config.y_column:
                 col = df[config.y_column]
-                result["value"] = (
-                    float(col.mean())
-                    if config.aggregation == "mean"
-                    else float(col.sum())
-                )
+                if config.aggregation == "mean":
+                    result["value"] = float(col.mean())
+                elif config.aggregation == "sum":
+                    result["value"] = float(col.sum())
+                elif config.aggregation == "count":
+                    result["value"] = int(col.count())
+                elif config.aggregation == "min":
+                    result["value"] = float(col.min())
+                elif config.aggregation == "max":
+                    result["value"] = float(col.max())
+                else:
+                    result["value"] = float(col.sum())
                 result["format"] = "number"
 
         elif config.visualization_type == VisualizationType.HEATMAP:
@@ -489,3 +529,17 @@ class DataService:
             "q1": float(col.quantile(0.25)),
             "q3": float(col.quantile(0.75)),
         }
+
+    def export_to_csv(self, df: pl.DataFrame, output_path: str) -> str:
+        """
+        Export DataFrame to CSV file.
+
+        Args:
+            df: DataFrame to export
+            output_path: Path for output file
+
+        Returns:
+            Path to the exported file
+        """
+        df.write_csv(output_path)
+        return output_path

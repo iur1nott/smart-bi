@@ -1,39 +1,51 @@
-"""Domain layer - Core business entities and value objects."""
+"""
+Domain Layer - Core business entities and value objects.
+This layer contains pure business logic with no dependencies on external frameworks.
+"""
 
 from .entities import (
+    User,
     Analysis,
     Slide,
     Visualization,
-    UserSession,
-    ColumnType,
+    VisualizationConfig,
     VisualizationType,
-    ExportFormat,
+    DataSchema,
+    Column,
+    ColumnType,
+    UserSession,
 )
 from .value_objects import (
-    FileMetadata,
-    ChartColors,
-    Position,
-    Size,
-    LayoutConstraints,
+    ExportOptions,
     FilterCondition,
     AggregationConfig,
-    ExportOptions,
+    Credentials,
+)
+from .repositories import (
+    UserRepository,
+    AnalysisRepository,
+    SessionRepository,
 )
 
 __all__ = [
+    # Entities
+    "User",
     "Analysis",
     "Slide",
     "Visualization",
-    "UserSession",
-    "ColumnType",
+    "VisualizationConfig",
     "VisualizationType",
-    "ExportFormat",
-    "FileMetadata",
-    "ChartColors",
-    "Position",
-    "Size",
-    "LayoutConstraints",
+    "DataSchema",
+    "Column",
+    "ColumnType",
+    "UserSession",
+    # Value Objects
+    "ExportOptions",
     "FilterCondition",
     "AggregationConfig",
-    "ExportOptions",
+    "Credentials",
+    # Repository Interfaces
+    "UserRepository",
+    "AnalysisRepository",
+    "SessionRepository",
 ]

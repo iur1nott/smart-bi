@@ -1,81 +1,133 @@
 """
-Chart Factory - Creates visualization charts using Plotly.
-Follows Factory Pattern for creating different chart types.
+Chart Factory - Creates Plotly charts from visualization configurations.
+Provides a unified interface for all chart types.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import plotly.io as pio
 import io
 
-from domain.entities import VisualizationType, VisualizationConfig
+from domain.entities import VisualizationConfig, VisualizationType
+from domain.value_objects import ChartColors
 
 
 class ChartFactory:
     """
-    Factory class for creating different types of charts.
-    Uses Plotly for interactive visualizations.
+    Factory for creating Plotly charts from visualization configurations.
+    Implements the Factory Pattern for chart creation.
     """
 
-    # Default color schemes
-    COLOR_SCHEMES = {
-        "default": px.colors.qualitative.Plotly,
-        "pastel": px.colors.qualitative.Pastel,
-        "dark": px.colors.qualitative.Dark24,
-        "light": px.colors.qualitative.Light24,
-        "vivid": px.colors.qualitative.Vivid,
-        "safe": px.colors.qualitative.Safe,
-        "d3": px.colors.qualitative.D3,
-        "alphabet": px.colors.qualitative.Alphabet,
-    }
-
-    def __init__(self, default_height: int = 400, default_width: int = 600):
-        """Initialize the chart factory with default dimensions."""
-        self.default_height = default_height
-        self.default_width = default_width
-        self.current_theme = "default"
+    def __init__(self):
+        """Initialize the chart factory with color palette."""
+        self.colors = ChartColors()
 
     def create_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """
-        Create a chart based on configuration.
+        Create a chart based on visualization configuration.
 
         Args:
-            df: Polars DataFrame with data
+            df: Polars DataFrame with the data
             config: Visualization configuration
 
         Returns:
             Plotly Figure object
         """
-        chart_methods = {
-            VisualizationType.LINE_CHART: self._create_line_chart,
+        chart_creators = {
             VisualizationType.BAR_CHART: self._create_bar_chart,
+            VisualizationType.LINE_CHART: self._create_line_chart,
             VisualizationType.PIE_CHART: self._create_pie_chart,
+            VisualizationType.AREA_CHART: self._create_area_chart,
             VisualizationType.SCATTER_PLOT: self._create_scatter_plot,
             VisualizationType.HISTOGRAM: self._create_histogram,
-            VisualizationType.AREA_CHART: self._create_area_chart,
             VisualizationType.BOX_PLOT: self._create_box_plot,
             VisualizationType.HEATMAP: self._create_heatmap,
         }
 
-        method = chart_methods.get(config.visualization_type)
-        if method:
-            fig = method(df, config)
+        creator = chart_creators.get(config.visualization_type, self._create_bar_chart)
+
+        fig = creator(df, config)
+
+        fig.update_layout(
+            title={
+                "text": config.title,
+                "x": 0.5,
+                "xanchor": "center",
+            },
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font={"family": "Inter, sans-serif", "color": "#1E293B"},
+            margin={"l": 60, "r": 40, "t": 60, "b": 60},
+        )
+
+        fig.update_xaxes(
+            gridcolor="#E2E8F0",
+            linecolor="#CBD5E1",
+        )
+        fig.update_yaxes(
+            gridcolor="#E2E8F0",
+            linecolor="#CBD5E1",
+        )
+
+        return fig
+
+    def _prepare_aggregated_data(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> pl.DataFrame:
+        """Prepare aggregated data for charts."""
+        if not config.x_column or not config.y_column:
+            return df
+
+        if config.aggregation == "sum":
+            agg_expr = pl.col(config.y_column).sum()
+        elif config.aggregation == "mean":
+            agg_expr = pl.col(config.y_column).mean()
+        elif config.aggregation == "count":
+            agg_expr = pl.col(config.y_column).count()
+        elif config.aggregation == "min":
+            agg_expr = pl.col(config.y_column).min()
+        elif config.aggregation == "max":
+            agg_expr = pl.col(config.y_column).max()
         else:
-            fig = go.Figure()
-            fig.add_annotation(
-                text=f"Chart type '{config.visualization_type.value}' not implemented",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
+            agg_expr = pl.col(config.y_column).sum()
+
+        group_cols = [config.x_column]
+        if config.color_column and config.color_column in df.columns:
+            group_cols.append(config.color_column)
+
+        result = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
+        return result.sort(config.x_column)
+
+    def _create_bar_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
+        """Create a bar chart."""
+        agg_df = self._prepare_aggregated_data(df, config)
+        pandas_df = agg_df.to_pandas()
+
+        if config.color_column and config.color_column in pandas_df.columns:
+            fig = px.bar(
+                pandas_df,
+                x=config.x_column,
+                y=config.y_column,
+                color=config.color_column,
+                color_discrete_sequence=self.colors.palette,
+                barmode="group",
+            )
+        else:
+            fig = px.bar(
+                pandas_df,
+                x=config.x_column,
+                y=config.y_column,
+                color_discrete_sequence=[self.colors.primary],
             )
 
-        # Apply common styling
-        self._apply_common_style(fig, config)
+        fig.update_traces(
+            marker_line_width=0,
+            marker_opacity=0.9,
+        )
 
         return fig
 
@@ -83,83 +135,31 @@ class ChartFactory:
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Create a line chart."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
+        agg_df = self._prepare_aggregated_data(df, config)
+        pandas_df = agg_df.to_pandas()
 
-        if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
-
-        color_col = config.color_column
-
-        if color_col and color_col in df.columns:
+        if config.color_column and config.color_column in pandas_df.columns:
             fig = px.line(
                 pandas_df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+                x=config.x_column,
+                y=config.y_column,
+                color=config.color_column,
+                color_discrete_sequence=self.colors.palette,
+                markers=True,
             )
         else:
             fig = px.line(
                 pandas_df,
-                x=x_col,
-                y=y_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+                x=config.x_column,
+                y=config.y_column,
+                color_discrete_sequence=[self.colors.primary],
+                markers=True,
             )
 
-        return fig
-
-    def _create_bar_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
-        """Create a bar chart."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
-
-        if not x_col:
-            return self._create_empty_figure("Please select X column")
-
-        color_col = config.color_column
-
-        if y_col:
-            if color_col and color_col in df.columns:
-                fig = px.bar(
-                    pandas_df,
-                    x=x_col,
-                    y=y_col,
-                    color=color_col,
-                    barmode="group",
-                    color_discrete_sequence=self.COLOR_SCHEMES.get(
-                        config.color_scheme, self.COLOR_SCHEMES["default"]
-                    ),
-                )
-            else:
-                fig = px.bar(
-                    pandas_df,
-                    x=x_col,
-                    y=y_col,
-                    color_discrete_sequence=self.COLOR_SCHEMES.get(
-                        config.color_scheme, self.COLOR_SCHEMES["default"]
-                    ),
-                )
-        else:
-            # Count plot
-            counts = pandas_df[x_col].value_counts().reset_index()
-            counts.columns = [x_col, "count"]
-            fig = px.bar(
-                counts,
-                x=x_col,
-                y="count",
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
+        fig.update_traces(
+            line_width=2,
+            marker_size=6,
+        )
 
         return fig
 
@@ -167,34 +167,52 @@ class ChartFactory:
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Create a pie chart."""
-        pandas_df = df.to_pandas()
-        names_col = config.x_column
-        values_col = config.y_column
+        agg_df = self._prepare_aggregated_data(df, config)
+        pandas_df = agg_df.to_pandas()
 
-        if not names_col:
-            return self._create_empty_figure("Please select a column for categories")
+        fig = px.pie(
+            pandas_df,
+            names=config.x_column,
+            values=config.y_column,
+            color_discrete_sequence=self.colors.palette,
+        )
 
-        if values_col:
-            fig = px.pie(
+        fig.update_traces(
+            textinfo="percent+label",
+            textposition="outside",
+            marker_line_width=1,
+            marker_line_color="white",
+        )
+
+        return fig
+
+    def _create_area_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
+        """Create an area chart."""
+        agg_df = self._prepare_aggregated_data(df, config)
+        pandas_df = agg_df.to_pandas()
+
+        if config.color_column and config.color_column in pandas_df.columns:
+            fig = px.area(
                 pandas_df,
-                names=names_col,
-                values=values_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+                x=config.x_column,
+                y=config.y_column,
+                color=config.color_column,
+                color_discrete_sequence=self.colors.palette,
             )
         else:
-            # Count occurrences
-            counts = pandas_df[names_col].value_counts().reset_index()
-            counts.columns = [names_col, "count"]
-            fig = px.pie(
-                counts,
-                names=names_col,
-                values="count",
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+            fig = px.area(
+                pandas_df,
+                x=config.x_column,
+                y=config.y_column,
+                color_discrete_sequence=[self.colors.primary],
             )
+
+        fig.update_traces(
+            line_width=2,
+            opacity=0.7,
+        )
 
         return fig
 
@@ -203,25 +221,30 @@ class ChartFactory:
     ) -> go.Figure:
         """Create a scatter plot."""
         pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
 
-        if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
+        if not config.x_column or not config.y_column:
+            raise ValueError("Scatter plot requires both x and y columns")
 
-        color_col = config.color_column
-        size_col = config.size_column
+        size_col = (
+            config.size_column if config.size_column in pandas_df.columns else None
+        )
+        color_col = (
+            config.color_column if config.color_column in pandas_df.columns else None
+        )
 
         fig = px.scatter(
             pandas_df,
-            x=x_col,
-            y=y_col,
-            color=color_col if color_col else None,
-            size=size_col if size_col else None,
-            color_discrete_sequence=self.COLOR_SCHEMES.get(
-                config.color_scheme, self.COLOR_SCHEMES["default"]
-            ),
+            x=config.x_column,
+            y=config.y_column,
+            color=color_col,
+            size=size_col,
+            color_discrete_sequence=self.colors.palette,
             opacity=0.7,
+        )
+
+        fig.update_traces(
+            marker_line_width=1,
+            marker_line_color="white",
         )
 
         return fig
@@ -231,67 +254,27 @@ class ChartFactory:
     ) -> go.Figure:
         """Create a histogram."""
         pandas_df = df.to_pandas()
-        x_col = config.x_column
 
-        if not x_col:
-            return self._create_empty_figure("Please select a column for histogram")
+        if not config.x_column:
+            raise ValueError("Histogram requires an x column")
 
-        color_col = config.color_column
+        color_col = (
+            config.color_column if config.color_column in pandas_df.columns else None
+        )
 
-        if color_col and color_col in df.columns:
-            fig = px.histogram(
-                pandas_df,
-                x=x_col,
-                color=color_col,
-                barmode="overlay",
-                opacity=0.7,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-        else:
-            fig = px.histogram(
-                pandas_df,
-                x=x_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
+        fig = px.histogram(
+            pandas_df,
+            x=config.x_column,
+            color=color_col,
+            color_discrete_sequence=self.colors.palette,
+            nbins=30,
+            opacity=0.8,
+        )
 
-        return fig
-
-    def _create_area_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
-        """Create an area chart."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
-
-        if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
-
-        color_col = config.color_column
-
-        if color_col and color_col in df.columns:
-            fig = px.area(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-        else:
-            fig = px.area(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
+        fig.update_traces(
+            marker_line_width=1,
+            marker_line_color="white",
+        )
 
         return fig
 
@@ -300,22 +283,18 @@ class ChartFactory:
     ) -> go.Figure:
         """Create a box plot."""
         pandas_df = df.to_pandas()
-        y_col = config.y_column
-        x_col = config.x_column
 
-        if not y_col:
-            return self._create_empty_figure("Please select Y column for box plot")
+        if not config.y_column:
+            raise ValueError("Box plot requires a y column")
 
-        color_col = config.color_column
+        x_col = config.x_column if config.x_column in pandas_df.columns else None
 
         fig = px.box(
             pandas_df,
-            x=x_col if x_col else None,
-            y=y_col,
-            color=color_col if color_col else None,
-            color_discrete_sequence=self.COLOR_SCHEMES.get(
-                config.color_scheme, self.COLOR_SCHEMES["default"]
-            ),
+            x=x_col,
+            y=config.y_column,
+            color=x_col,
+            color_discrete_sequence=self.colors.palette,
         )
 
         return fig
@@ -325,144 +304,88 @@ class ChartFactory:
     ) -> go.Figure:
         """Create a heatmap."""
         if not config.x_column or not config.y_column:
-            return self._create_empty_figure(
-                "Please select X and Y columns for heatmap"
-            )
+            raise ValueError("Heatmap requires x and y columns")
 
-        x_col = config.x_column
-        y_col = config.y_column
-        value_col = config.color_column or config.y_column
+        agg_df = df.group_by(
+            [config.x_column, config.color_column or config.x_column]
+        ).agg(pl.col(config.y_column).sum().alias(config.y_column))
 
-        # Create pivot table
-        pivot_df = df.group_by([x_col, y_col]).agg(
-            pl.col(value_col).sum().alias("value")
+        pivot_df = agg_df.pivot(
+            values=config.y_column,
+            index=config.x_column,
+            columns=config.color_column or config.x_column,
         )
 
-        pivot_pandas = pivot_df.to_pandas()
-        pivot_table = pivot_pandas.pivot(index=y_col, columns=x_col, values="value")
+        data = pivot_df.drop(config.x_column).to_numpy()
 
-        fig = px.imshow(pivot_table, color_continuous_scale="Blues", aspect="auto")
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=data,
+                x=pivot_df.columns[1:],
+                y=pivot_df[config.x_column].to_list(),
+                colorscale="Viridis",
+            )
+        )
 
         return fig
-
-    def _create_empty_figure(self, message: str = "No data") -> go.Figure:
-        """Create an empty figure with a message."""
-        fig = go.Figure()
-        fig.add_annotation(
-            text=message,
-            xref="paper",
-            yref="paper",
-            x=0.5,
-            y=0.5,
-            showarrow=False,
-            font=dict(size=16, color="gray"),
-        )
-        fig.update_xaxes(showgrid=False, showticklabels=False)
-        fig.update_yaxes(showgrid=False, showticklabels=False)
-        return fig
-
-    def _apply_common_style(self, fig: go.Figure, config: VisualizationConfig) -> None:
-        """Apply common styling to the figure."""
-        title = config.title if config.title else ""
-
-        fig.update_layout(
-            title=title,
-            height=self.default_height,
-            width=self.default_width,
-            showlegend=config.show_legend,
-            paper_bgcolor="rgba(255,255,255,1)",
-            plot_bgcolor="rgba(248,248,248,1)",
-            font=dict(family="Arial, sans-serif", size=12),
-            title_font=dict(size=16),
-            margin=dict(l=60, r=40, t=60, b=60),
-        )
-
-        if config.show_grid:
-            fig.update_xaxes(
-                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
-            )
-            fig.update_yaxes(
-                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
-            )
-        else:
-            fig.update_xaxes(showgrid=False)
-            fig.update_yaxes(showgrid=False)
 
     def export_figure_to_bytes(
-        self, fig: go.Figure, format: str = "png", scale: float = 2.0
+        self,
+        fig: go.Figure,
+        format: str = "png",
+        width: int = 1200,
+        height: int = 800,
+        scale: float = 2.0,
     ) -> bytes:
         """
-        Export figure to image bytes.
+        Export a figure to bytes.
 
         Args:
             fig: Plotly Figure object
-            format: Image format (png, jpeg, svg, pdf)
-            scale: Scale factor for higher resolution
+            format: Output format (png, jpeg, svg, pdf)
+            width: Width in pixels
+            height: Height in pixels
+            scale: Scale factor for resolution
 
         Returns:
-            Image as bytes
+            Image bytes
         """
-        img_bytes = pio.to_image(fig, format=format, scale=scale)
-        return img_bytes
+        return fig.to_image(
+            format=format,
+            width=width,
+            height=height,
+            scale=scale,
+        )
 
-    def export_figure_to_base64(
-        self, fig: go.Figure, format: str = "png", scale: float = 2.0
+    def export_figure_to_file(
+        self,
+        fig: go.Figure,
+        filepath: str,
+        format: Optional[str] = None,
+        width: int = 1200,
+        height: int = 800,
+        scale: float = 2.0,
     ) -> str:
         """
-        Export figure to base64 encoded string.
+        Export a figure to a file.
 
         Args:
             fig: Plotly Figure object
-            format: Image format
-            scale: Scale factor
+            filepath: Path for output file
+            format: Output format (inferred from extension if not provided)
+            width: Width in pixels
+            height: Height in pixels
+            scale: Scale factor for resolution
 
         Returns:
-            Base64 encoded image string
+            Path to the saved file
         """
-        import base64
+        if format is None:
+            format = filepath.split(".")[-1]
 
-        img_bytes = self.export_figure_to_bytes(fig, format, scale)
-        return base64.b64encode(img_bytes).decode("utf-8")
+        img_bytes = self.export_figure_to_bytes(fig, format, width, height, scale)
 
-    def get_available_chart_types(self) -> List[Dict[str, str]]:
-        """Get list of available chart types with display names."""
-        return [
-            {
-                "id": VisualizationType.BAR_CHART.value,
-                "name": "Bar Chart",
-                "icon": "📊",
-            },
-            {
-                "id": VisualizationType.LINE_CHART.value,
-                "name": "Line Chart",
-                "icon": "📈",
-            },
-            {
-                "id": VisualizationType.PIE_CHART.value,
-                "name": "Pie Chart",
-                "icon": "🥧",
-            },
-            {
-                "id": VisualizationType.AREA_CHART.value,
-                "name": "Area Chart",
-                "icon": "📉",
-            },
-            {
-                "id": VisualizationType.SCATTER_PLOT.value,
-                "name": "Scatter Plot",
-                "icon": "⚬",
-            },
-            {"id": VisualizationType.HISTOGRAM.value, "name": "Histogram", "icon": "▊"},
-            {"id": VisualizationType.BOX_PLOT.value, "name": "Box Plot", "icon": "📦"},
-            {"id": VisualizationType.HEATMAP.value, "name": "Heatmap", "icon": "🔥"},
-            {"id": VisualizationType.TABLE.value, "name": "Table", "icon": "📋"},
-            {
-                "id": VisualizationType.METRIC_CARD.value,
-                "name": "Metric Card",
-                "icon": "💳",
-            },
-        ]
+        with open(filepath, "wb") as f:
+            f.write(img_bytes)
 
-    def get_available_color_schemes(self) -> List[str]:
-        """Get list of available color schemes."""
-        return list(self.COLOR_SCHEMES.keys())
+        return filepath

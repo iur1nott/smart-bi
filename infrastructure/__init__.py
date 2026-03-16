@@ -1,9 +1,18 @@
-"""Infrastructure layer - External services and implementations."""
+"""
+Infrastructure Layer - External services and implementations.
+This layer contains database connections, repository implementations,
+and external service integrations.
+"""
 
-from .chart_factory import ChartFactory
-from .pdf_generator import PDFGenerator
+from .database import Database, get_database, init_database
+from .models import Base, UserModel, AnalysisModel, SessionModel
 
 __all__ = [
-    "ChartFactory",
-    "PDFGenerator",
+    "Database",
+    "get_database",
+    "init_database",
+    "Base",
+    "UserModel",
+    "AnalysisModel",
+    "SessionModel",
 ]
