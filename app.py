@@ -14,6 +14,42 @@ import polars as pl
 from typing import Optional, Dict, Any
 import os
 import sys
+import uuid
+from datetime import datetime
+import unicodedata  # Para sanitizar nomes de arquivo
+
+# ────────────────────────────────────────────────
+# Adição para Supabase
+# ────────────────────────────────────────────────
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "uploads")
+
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("✅ Supabase conectado com sucesso (usando secret key)")
+    except Exception as e:
+        print(f"❌ Erro ao conectar Supabase: {str(e)}")
+else:
+    print("⚠️ Variáveis Supabase não encontradas no .env – persistência desativada")
+
+# Função para sanitizar nomes de arquivo (remove acentos, espaços, caracteres inválidos)
+def sanitize_filename(filename: str) -> str:
+    """Remove acentos, espaços e caracteres inválidos para Supabase Storage."""
+    # Remove acentos e normaliza
+    normalized = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
+    # Mantém só alfanumérico, underline e hífen
+    cleaned = ''.join(c if c.isalnum() or c in ('_', '-') else '_' for c in normalized)
+    # Remove underlines duplicados e finais
+    cleaned = '_'.join(filter(None, cleaned.split('_'))).strip('_')
+    return cleaned
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,7 +80,6 @@ from presentation.sidebar import render_sidebar, render_secondary_sidebar
 from presentation.canvas import render_canvas, render_slide_navigator
 from presentation.widgets import (
     render_widget_palette,
-    # render_visualization_config,
     render_data_preview,
 )
 from presentation.components import (
@@ -54,7 +89,6 @@ from presentation.components import (
     render_welcome_screen,
     render_notification,
 )
-
 
 # Configure Streamlit page
 st.set_page_config(
@@ -230,13 +264,13 @@ class DashboardBuilderApp:
 
         with col3:
             if current_analysis:
-                if st.button("💾 Save", use_container_width=True):
+                if st.button("💾 Save", use_container_width=True, key="save_analysis_button"):
                     self.analysis_service.save_current_analysis()
                     set_state("notification", ("Analysis saved!", "success"))
 
         with col4:
             if current_analysis:
-                if st.button("📤 Export", type="primary", use_container_width=True):
+                if st.button("📤 Export", type="primary", use_container_width=True, key="export_header_button"):
                     set_state("show_export", True)
 
         st.markdown("---")
@@ -285,7 +319,7 @@ class DashboardBuilderApp:
 
         if not current_analysis or not current_analysis.data_schema:
             st.info("📁 Upload data to add visualizations")
-            if st.button("📂 Upload XLSX", use_container_width=True):
+            if st.button("📂 Upload XLSX", use_container_width=True, key="upload_widget_button"):
                 set_state("show_uploader", True)
             return
 
@@ -328,12 +362,12 @@ class DashboardBuilderApp:
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button(
-                            "📁 Load File", type="primary", use_container_width=True
+                            "📁 Load File", type="primary", use_container_width=True, key="load_file_button"
                         ):
                             self._process_uploaded_file(uploaded_file, name_input)
 
                     with col2:
-                        if st.button("✗ Cancel", use_container_width=True):
+                        if st.button("✗ Cancel", use_container_width=True, key="cancel_upload_button"):
                             set_state("show_uploader", False)
                             st.rerun()
 
@@ -344,7 +378,7 @@ class DashboardBuilderApp:
                 current_settings=self.analysis_service.get_settings(),
                 on_save=self._on_save_settings,
             )
-            if st.button("Close Settings"):
+            if st.button("Close Settings", key="close_settings_button"):
                 set_state("show_settings", False)
                 st.rerun()
 
@@ -356,7 +390,7 @@ class DashboardBuilderApp:
                 render_export_dialog(
                     analysis=current_analysis, on_export=self._on_export
                 )
-                if st.button("Close Export"):
+                if st.button("Close Export", key="close_export_button"):
                     set_state("show_export", False)
                     st.rerun()
 
@@ -377,11 +411,55 @@ class DashboardBuilderApp:
     def _process_uploaded_file(self, uploaded_file, name: str) -> None:
         """Process an uploaded XLSX file."""
         try:
+            # ────────────────────────────────────────────────
+            # Persistência no Supabase (Storage + tabela)
+            # ────────────────────────────────────────────────
+            file_bytes = uploaded_file.getvalue()
+            file_path_in_bucket = None
+
+            if supabase:
+                timestamp = datetime.now().strftime("%Y-%m-%d")
+                unique_id = uuid.uuid4().hex[:8]
+                original_name = uploaded_file.name
+                safe_name = sanitize_filename(original_name)  # Nome sanitizado
+                file_ext = os.path.splitext(original_name)[1] or ".xlsx"
+                file_path_in_bucket = f"{timestamp}/{unique_id}_{safe_name}{file_ext}"
+
+                try:
+                    response = supabase.storage.from_(SUPABASE_BUCKET).upload(
+                        path=file_path_in_bucket,
+                        file=file_bytes,
+                        file_options={"content-type": uploaded_file.type or "application/octet-stream"}
+                    )
+                    print("Upload response:", response)  # Debug no terminal
+                    st.caption(f"Arquivo persistido no Supabase Storage: {file_path_in_bucket}")
+                except Exception as upload_err:
+                    print("Erro detalhado no upload:", str(upload_err))  # Debug
+                    st.warning(f"Falha no upload para Storage: {str(upload_err)}")
+                    file_path_in_bucket = None
+
+                # Salvar histórico na tabela (mesmo se upload falhar)
+                try:
+                    metadata = {
+                        "analysis_name": name,
+                        "file_name": uploaded_file.name,
+                        "file_path": file_path_in_bucket or "falha_no_upload",
+                        "bucket": SUPABASE_BUCKET,
+                        "file_size_bytes": len(file_bytes),
+                        "row_count": None,  # pode ser atualizado depois
+                    }
+                    supabase.table("analysis_history").insert(metadata).execute()
+                    print("Histórico salvo com sucesso na tabela analysis_history")
+                except Exception as db_err:
+                    print("Erro ao registrar histórico:", str(db_err))
+                    st.warning(f"Falha ao registrar histórico: {str(db_err)}")
+
+            # ────────────────────────────────────────────────
+            # Fluxo original do app (continua normalmente)
+            # ────────────────────────────────────────────────
+
             # Create new analysis
             analysis = self.analysis_service.create_analysis(name)
-
-            # Read file bytes
-            file_bytes = uploaded_file.getvalue()
 
             # Load data and get schema
             schema, df = self.data_service.load_excel_from_bytes(
@@ -390,7 +468,7 @@ class DashboardBuilderApp:
 
             # Update analysis with schema
             analysis.data_schema = schema
-            analysis.file_path = uploaded_file.name
+            analysis.file_path = uploaded_file.name  # ou file_path_in_bucket se quiser rastrear
 
             # Save analysis
             self.analysis_service.save_current_analysis()

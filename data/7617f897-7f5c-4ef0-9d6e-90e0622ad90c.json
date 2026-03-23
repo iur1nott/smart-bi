@@ -1,0 +1,198 @@
+{
+  "id": "7617f897-7f5c-4ef0-9d6e-90e0622ad90c",
+  "name": "Atividades Pr\u00e1ticas_Te\u00f3ricas (Avalia\u00e7\u00e3o)",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "T326 - Ci\u00eancia de Dados",
+        "data_type": "text",
+        "sample_values": [
+          "Prof. Rilder de Sousa Pires",
+          "Laborat\u00f3rio de Ci\u00eancia de Dados e Intelig\u00eancia Artificial (LCDIA)",
+          "Universidade de Fortaleza",
+          "Atividades Pr\u00e1ticas/Te\u00f3ricas: (2,5 pontos)",
+          "Matr\u00edcula",
+          "2020807",
+          "2127945",
+          "2210406",
+          "2210465",
+          "2214679"
+        ],
+        "null_count": 0,
+        "unique_count": 32,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__1",
+        "data_type": "text",
+        "sample_values": [
+          "Unidade 1 (1,0 pt)",
+          "0.99",
+          "0.98",
+          "0.8",
+          "0.79",
+          "0.98",
+          "1",
+          "0.31",
+          "0.91",
+          "0.68"
+        ],
+        "null_count": 4,
+        "unique_count": 24,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__2",
+        "data_type": "categorical",
+        "sample_values": [
+          "Unidade 2 (1,0 pt)",
+          "0.96",
+          "0.93",
+          "0.48",
+          "0.69",
+          "0.38",
+          "0.8",
+          "0.8",
+          "0.59",
+          "0.73"
+        ],
+        "null_count": 7,
+        "unique_count": 19,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__2": null,
+              "count": 7
+            },
+            {
+              "__UNNAMED__2": "0.96",
+              "count": 4
+            },
+            {
+              "__UNNAMED__2": "0.8",
+              "count": 3
+            },
+            {
+              "__UNNAMED__2": "0.92",
+              "count": 2
+            },
+            {
+              "__UNNAMED__2": "0.85",
+              "count": 2
+            },
+            {
+              "__UNNAMED__2": "Unidade 2 (1,0 pt)",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.25",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.69",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.38",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.48",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__3",
+        "data_type": "categorical",
+        "sample_values": [
+          "Unidade 3 (0,5 pt)",
+          "0.475",
+          "0.5",
+          "0.47",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.43"
+        ],
+        "null_count": 15,
+        "unique_count": 8,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__3": null,
+              "count": 15
+            },
+            {
+              "__UNNAMED__3": "0.5",
+              "count": 10
+            },
+            {
+              "__UNNAMED__3": "0.475",
+              "count": 2
+            },
+            {
+              "__UNNAMED__3": "Unidade 3 (0,5 pt)",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.43",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.4425",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.47",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.405",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__4",
+        "data_type": "text",
+        "sample_values": [
+          "Nota Atv. Pr\u00e1ticas/ Te\u00f3ricas (2,5 pts)",
+          "2.425",
+          "2.41",
+          "1.75",
+          "1.98",
+          "1.36",
+          "1.8",
+          "0.31",
+          "2.21",
+          "1.77"
+        ],
+        "null_count": 4,
+        "unique_count": 28,
+        "statistics": {}
+      }
+    ],
+    "row_count": 32,
+    "file_name": "Atividades Pr\u00e1ticas_Te\u00f3ricas (Avalia\u00e7\u00e3o).xlsx",
+    "file_size": 13822
+  },
+  "slides": [
+    {
+      "id": "ef57c721-253c-4f95-9dff-0c5e16b867dd",
+      "title": "Slide 1",
+      "visualizations": [],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-23T12:04:11.678264",
+      "updated_at": "2026-03-23T12:04:11.678265"
+    }
+  ],
+  "created_at": "2026-03-23T12:04:11.678255",
+  "updated_at": "2026-03-23T12:04:11.678266",
+  "file_path": "Atividades Pr\u00e1ticas_Te\u00f3ricas (Avalia\u00e7\u00e3o).xlsx"
+}

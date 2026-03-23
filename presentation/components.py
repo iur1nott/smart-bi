@@ -53,7 +53,7 @@ def render_settings_modal(current_settings: Dict[str, Any], on_save: Callable) -
         )
 
     st.markdown("---")
-    if st.button("💾 Save Settings", type="primary"):
+    if st.button("💾 Save Settings", type="primary", key="save_settings_button"):
         new_settings = {
             "theme": theme,
             "grid_visible": grid_visible,
@@ -99,13 +99,17 @@ def render_analysis_history(
 
             with col2:
                 if st.button(
-                    "📂 Open", key=f"open_{analysis['id']}", use_container_width=True
+                    "📂 Open",
+                    key=f"open_analysis_{analysis['id']}",
+                    use_container_width=True
                 ):
                     on_select(analysis["id"])
 
             with col3:
                 if st.button(
-                    "🗑️", key=f"delete_{analysis['id']}", help="Delete analysis"
+                    "🗑️",
+                    key=f"delete_analysis_{analysis['id']}",
+                    help="Delete analysis"
                 ):
                     on_delete(analysis["id"])
                     st.rerun()
@@ -142,7 +146,7 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
 
     st.markdown("---")
 
-    if st.button("📤 Export", type="primary", use_container_width=True):
+    if st.button("📤 Export", type="primary", use_container_width=True, key="export_analysis_button"):
         with st.spinner("Generating export..."):
             export_options = {
                 "format": export_format.lower(),
@@ -166,6 +170,7 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
                         mime="application/pdf"
                         if export_format.lower() == "pdf"
                         else "text/plain",
+                        key="download_export_file_button"
                     )
                 except Exception as e:
                     st.error(f"Error reading file: {str(e)}")
@@ -183,7 +188,7 @@ def render_toolbar(
     col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
 
     with col1:
-        if st.button("⬅️", help="Previous Slide", disabled=current_slide_idx == 0):
+        if st.button("⬅️", help="Previous Slide", disabled=current_slide_idx == 0, key="prev_slide_button"):
             on_prev()
 
     with col2:
@@ -193,17 +198,17 @@ def render_toolbar(
         )
 
     with col3:
-        if st.button("➕ Add Slide", use_container_width=True):
+        if st.button("➕ Add Slide", use_container_width=True, key="add_slide_button"):
             on_add_slide()
 
     with col4:
         if st.button(
-            "➡️", help="Next Slide", disabled=current_slide_idx >= total_slides - 1
+            "➡️", help="Next Slide", disabled=current_slide_idx >= total_slides - 1, key="next_slide_button"
         ):
             on_next()
 
     with col5:
-        if st.button("📤 Export", type="primary", use_container_width=True):
+        if st.button("📤 Export", type="primary", use_container_width=True, key="export_toolbar_button"):
             on_export()
 
 
@@ -224,7 +229,7 @@ def render_welcome_screen(on_new_analysis: Callable) -> None:
     with col2:
         st.markdown("### Get Started")
 
-        if st.button("📁 Upload XLSX File", type="primary", use_container_width=True):
+        if st.button("📁 Upload XLSX File", type="primary", use_container_width=True, key="welcome_upload_button"):
             on_new_analysis()
 
         st.markdown("---")
@@ -261,9 +266,9 @@ def render_confirmation_dialog(
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("✓ Confirm", type="primary", use_container_width=True):
+        if st.button("✓ Confirm", type="primary", use_container_width=True, key="confirm_dialog_button"):
             on_confirm()
 
     with col2:
-        if st.button("✗ Cancel", use_container_width=True):
+        if st.button("✗ Cancel", use_container_width=True, key="cancel_dialog_button"):
             on_cancel()
