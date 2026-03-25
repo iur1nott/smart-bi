@@ -489,3 +489,73 @@ class DataService:
             "q1": float(col.quantile(0.25)),
             "q3": float(col.quantile(0.75)),
         }
+
+    def validate_and_cast_types(self, df: pl.DataFrame, schema_overrides: Dict[str, ColumnType]) -> pl.DataFrame:
+        """
+        Força a conversão de colunas para os tipos esperados, 
+        limpando dados sujos em colunas numéricas.
+        """
+        for col_name, expected_type in schema_overrides.items():
+            if col_name not in df.columns:
+                continue
+                
+            if expected_type == ColumnType.NUMERIC:
+                # Limpeza: remove R$, espaços e trata a vírgula como ponto
+                df = df.with_columns(
+                    pl.col(col_name)
+                    .cast(pl.String)
+                    .str.replace_all(r"[R\$\s\.]", "")
+                    .str.replace(",", ".")
+                    .cast(pl.Float64, strict=False)
+                )
+            elif expected_type == ColumnType.DATETIME:
+                # Tenta converter strings para data automaticamente
+                df = df.with_columns(
+                    pl.col(col_name).cast(pl.Date, strict=False)
+                )   
+                
+        return df
+
+    def rename_columns(self, df: pl.DataFrame, mapping: Dict[str, str]) -> pl.DataFrame:
+        """
+        Renomeia colunas evitando duplicatas. 
+        Se o usuário mapear duas colunas para 'Categoria', vira 'Categoria' e 'Categoria_1'.
+        """
+        new_names = []
+        seen_names = {}
+
+        # Criamos a lista de novos nomes verificando duplicatas
+        for col in df.columns:
+            if col in mapping:
+                desired_name = mapping[col]
+                # Se o nome já foi usado, adiciona um sufixo numérico
+                if desired_name in seen_names:
+                    seen_names[desired_name] += 1
+                    new_name = f"{desired_name}_{seen_names[desired_name]}"
+                else:
+                    seen_names[desired_name] = 0
+                    new_name = desired_name
+                new_names.append(new_name)
+            else:
+                new_names.append(col) # Mantém o original se não foi mapeado
+
+        # O Polars renomeia todas de uma vez pela ordem da lista
+        return df.rename({old: new for old, new in zip(df.columns, new_names)})
+
+    def store_data(self, analysis_id: str, df: pl.DataFrame) -> None:
+        """
+        Armazena o DataFrame processado no cache para ser utilizado 
+        pelas visualizações da análise.
+        """
+        if not hasattr(self, "_data_cache"):
+            self._data_cache = {}
+        
+        self._data_cache[analysis_id] = df
+
+    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+        """
+        Recupera os dados armazenados para uma análise específica.
+        """
+        if hasattr(self, "_data_cache"):
+            return self._data_cache.get(analysis_id)
+        return None    

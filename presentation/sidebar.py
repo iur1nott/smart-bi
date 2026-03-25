@@ -5,6 +5,7 @@ Sidebar Component - Main navigation and controls.
 from typing import Optional, Dict, Any, List, Callable
 import streamlit as st
 from datetime import datetime
+from utils.session_state import get_state, set_state
 
 
 def render_sidebar(
@@ -12,27 +13,45 @@ def render_sidebar(
     on_new_analysis: Callable,
     on_select_analysis: Callable,
     on_settings_click: Callable,
+    on_upload: Callable,  # ADICIONADO: Essencial para a Sprint 1
 ) -> Optional[str]:
     """Render the main sidebar with three sections."""
     selected_analysis_id = None
 
     with st.sidebar:
-        # TOP SECTION - Actions
-        st.markdown("### 📁 Actions")
+        # SEÇÃO SUPERIOR - Ações
+        st.markdown("### 📁 Ações")
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("➕ New", use_container_width=True, type="primary"):
+            if st.button("➕ Novo", use_container_width=True, type="primary"):
                 on_new_analysis()
 
         with col2:
-            if st.button("📂 Open", use_container_width=True):
-                st.session_state.show_uploader = True
+            if st.button("📂 Abrir", use_container_width=True):
+                set_state("show_uploader", True)
+
+        # Logica do Uploader na Sidebar
+        if get_state("show_uploader"):
+            st.markdown("---")
+            st.markdown("#### ⬆️ Carregar Dados")
+            analysis_name = st.text_input("Nome da Análise", value="Nova Análise Comercial")
+            uploaded_file = st.file_uploader("Selecione o Excel/CSV", type=["xlsx", "xls", "csv"])
+
+            if uploaded_file is not None:
+                if st.button("Confirmar Upload", type="primary", use_container_width=True):
+                    # Chama o processamento no app.py que ativa o mapeador
+                    on_upload(uploaded_file, analysis_name)
+                    set_state("show_uploader", False)
+            
+            if st.button("Cancelar", use_container_width=True):
+                set_state("show_uploader", False)
+                st.rerun()
 
         st.markdown("---")
 
-        # MIDDLE SECTION - History
-        st.markdown("### 📜 History")
+        # SEÇÃO MÉDIA - Histórico
+        st.markdown("### 📜 Histórico")
         history = analysis_service.get_analysis_history()
 
         if history:
@@ -40,8 +59,8 @@ def render_sidebar(
 
             for item in history[:10]:
                 analysis_id = item.get("id")
-                name = item.get("name", "Unnamed")
-                file_name = item.get("file_name", "No file")
+                name = item.get("name", "Sem nome")
+                file_name = item.get("file_name", "Sem arquivo")
                 is_active = st.session_state.get("current_analysis_id") == analysis_id
 
                 if st.button(
@@ -53,26 +72,25 @@ def render_sidebar(
                     selected_analysis_id = analysis_id
                     on_select_analysis(analysis_id)
 
-                st.caption(f"{file_name}")
+                st.caption(f"📄 {file_name}")
         else:
-            st.info("No analyses yet. Create a new analysis.")
+            st.info("Nenhuma análise encontrada.")
 
         st.markdown("---")
 
-        # BOTTOM SECTION - Settings
-        st.markdown("### ⚙️ Settings")
-        if st.button("⚙️ Settings", use_container_width=True):
+        # SEÇÃO INFERIOR - Configurações
+        st.markdown("### ⚙️ Configurações")
+        if st.button("⚙️ Definições", use_container_width=True):
             on_settings_click()
 
         settings = analysis_service.get_settings()
-        auto_save = st.toggle("Auto-save", value=settings.get("auto_save", True))
+        auto_save = st.toggle("Salvamento Automático", value=settings.get("auto_save", True))
         if auto_save != settings.get("auto_save"):
             analysis_service.update_settings({"auto_save": auto_save})
 
-        st.caption("Dashboard Builder v1.0.0")
+        st.caption("Smart-BI v1.0.0")
 
     return selected_analysis_id
-
 
 def render_secondary_sidebar(
     data_schema: Optional[Any], on_add_visualization: Callable, visible: bool = True
@@ -81,37 +99,24 @@ def render_secondary_sidebar(
     if not visible or not data_schema:
         return
 
-    with st.expander("📊 Add Visualization", expanded=True):
+    with st.expander("📊 Adicionar Visualização", expanded=True):
         from domain.entities import VisualizationType
 
         chart_types = [
-            ("📊 Bar", VisualizationType.BAR_CHART),
-            ("📈 Line", VisualizationType.LINE_CHART),
-            ("🥧 Pie", VisualizationType.PIE_CHART),
-            ("📉 Area", VisualizationType.AREA_CHART),
-            ("⚬ Scatter", VisualizationType.SCATTER_PLOT),
-            ("▊ Histogram", VisualizationType.HISTOGRAM),
-            ("📋 Table", VisualizationType.TABLE),
-            ("💳 Metric", VisualizationType.METRIC_CARD),
+            ("📊 Barras", VisualizationType.BAR_CHART),
+            ("📈 Linhas", VisualizationType.LINE_CHART),
+            ("🥧 Pizza", VisualizationType.PIE_CHART),
+            ("📉 Área", VisualizationType.AREA_CHART),
+            ("⚬ Dispersão", VisualizationType.SCATTER_PLOT),
+            ("▊ Histograma", VisualizationType.HISTOGRAM),
+            ("📋 Tabela", VisualizationType.TABLE),
+            ("💳 Métrica", VisualizationType.METRIC_CARD),
         ]
 
-        cols = st.columns(3)
+        cols = st.columns(2) # Ajustado para 2 colunas para melhor leitura no Windows
         for i, (label, viz_type) in enumerate(chart_types):
-            with cols[i % 3]:
+            with cols[i % 2]:
                 if st.button(
                     label, key=f"add_{viz_type.value}", use_container_width=True
                 ):
                     on_add_visualization(viz_type)
-
-
-def render_file_uploader(on_upload: Callable) -> None:
-    """Render file uploader dialog."""
-    st.markdown("### 📂 Upload XLSX File")
-
-    uploaded_file = st.file_uploader("Select an Excel file", type=["xlsx", "xls"])
-
-    if uploaded_file is not None:
-        if st.button("Load File", type="primary"):
-            on_upload(uploaded_file)
-            st.session_state.show_uploader = False
-            st.rerun()

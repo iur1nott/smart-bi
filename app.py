@@ -25,6 +25,7 @@ from domain.entities import (
     Visualization,
     VisualizationConfig,
     VisualizationType,
+    ColumnType,  # Adicionado para suportar a Task de Validação de Tipagem
 )
 from domain.value_objects import ExportOptions
 from use_cases.analysis_service import AnalysisService, FileAnalysisRepository
@@ -46,6 +47,7 @@ from presentation.widgets import (
     render_widget_palette,
     # render_visualization_config,
     render_data_preview,
+    render_column_mapper, # Adicionado para suportar a Task de Renomeação
 )
 from presentation.components import (
     render_settings_modal,
@@ -54,7 +56,6 @@ from presentation.components import (
     render_welcome_screen,
     render_notification,
 )
-
 
 # Configure Streamlit page
 st.set_page_config(
@@ -182,29 +183,40 @@ class DashboardBuilderApp:
 
     def run(self) -> None:
         """Run the main application."""
-        # Render header with export button
+        # 1. Renderizar Sidebar com a ligação correta para o processamento
+        render_sidebar(
+            analysis_service=self.analysis_service,
+            on_new_analysis=self._on_new_analysis,
+            on_select_analysis=self._on_select_analysis,
+            on_settings_click=lambda: set_state("show_settings", True),
+            on_upload=self._process_uploaded_file
+        )
+
+        # 2. Renderizar cabeçalho
         self._render_header()
 
-        # Check if there's a current analysis
+        # 3. Verificar o estado atual para decidir o que mostrar
         current_analysis = self.analysis_service.get_current_analysis()
 
-        if not current_analysis:
-            # Show welcome screen
+        if get_state("show_column_mapper"):
+            # Mostra a tela de mapeamento (Task 2)
+            self._render_mapping_screen()
+        elif not current_analysis:
+            # Mostra tela de boas-vindas
             render_welcome_screen(self._on_new_analysis)
             self._render_uploader_dialog()
         else:
-            # Render main layout
+            # Mostra o layout principal
             self._render_main_layout()
 
-        # Render settings modal if open
+        # Modais de interface
         if get_state("show_settings"):
             self._render_settings_modal()
 
-        # Render export dialog if open
         if get_state("show_export"):
             self._render_export_dialog()
 
-        # Handle notifications
+        # Notificações do sistema
         self._handle_notifications()
 
     def _render_header(self) -> None:
@@ -243,6 +255,47 @@ class DashboardBuilderApp:
 
     def _render_main_layout(self) -> None:
         """Render the main application layout."""
+        # --- TASK: MECANISMO DE MAPEAMENTO E VALIDAÇÃO ---
+        # Verifica se existe um upload pendente que precisa de mapeamento
+        if get_state("show_column_mapper"):
+            df = get_state("temp_df")
+            
+            # Chama o widget de interface que você criou em presentation/widgets.py
+            mapping = render_column_mapper(df)
+            
+            st.divider()
+            if st.button("Finalizar Mapeamento e Validar Dados", type="primary", use_container_width=True):
+                # 1. Executa a Renomeação (Task 2)
+                df_renomeado = self.data_service.rename_columns(df, mapping)
+                
+                # 2. Define o contrato de tipos baseado no que o usuário escolheu
+                # Mapeia as seleções para os enums de ColumnType
+                tipos_doc = {
+                    v: ColumnType.NUMERIC if v == "Valor" else ColumnType.DATETIME 
+                    for k, v in mapping.items() if v in ["Valor", "Data"]
+                }
+                
+                # 3. Executa a Validação de Tipagem (Task 1 - Casting)
+                df_final = self.data_service.validate_and_cast_types(df_renomeado, tipos_doc)
+                
+                # 4. Finaliza a criação da análise com os dados limpos
+                name = get_state("pending_upload_name")
+                file_name = get_state("pending_file_name")
+                
+                # Aqui você chama o fluxo original de salvar a análise
+                # Nota: Verifique se o seu analysis_service.create_analysis aceita o DF tratado
+                analysis = self.analysis_service.create_analysis(name)
+                
+                # Limpa os estados temporários e fecha o mapeador
+                set_state("show_column_mapper", False)
+                set_state("temp_df", None)
+                st.success("Dados validados com sucesso!")
+                st.rerun()
+            
+            # Interrompe a renderização do layout principal enquanto mapeia
+            return 
+        # -------------------------------------------------
+
         current_analysis = self.analysis_service.get_current_analysis()
 
         if not current_analysis:
@@ -279,34 +332,75 @@ class DashboardBuilderApp:
                     on_delete_slide=self._on_delete_slide,
                 )
 
+    def _render_mapping_screen(self) -> None:
+        """Interface de Mapeamento de Colunas (Sprint 1)."""
+        st.header("🛠️ Configuração de Dados")
+        df = get_state("temp_df")
+        
+        if df is not None:
+            mapping = render_column_mapper(df)
+            
+            st.markdown("---")
+            if st.button("Finalizar e Validar Dados", type="primary", use_container_width=True):
+                # 1. Renomeação (Task 2)
+                df_renomeado = self.data_service.rename_columns(df, mapping)
+                
+                # 2. Tipagem (Task 1)
+                tipos_alvo = {
+                    v: ColumnType.NUMERIC if v == "Valor" else ColumnType.DATETIME 
+                    for k, v in mapping.items() if v in ["Valor", "Data"]
+                }
+                df_final = self.data_service.validate_and_cast_types(df_renomeado, tipos_alvo)
+                
+                # 3. Criar análise
+                name = get_state("pending_upload_name")
+                analysis = self.analysis_service.create_analysis(name)
+                
+                # --- O AJUSTE VITAL ESTÁ AQUI ---
+                # Importamos e geramos o Schema para habilitar a barra de gráficos
+                from domain.entities import DataSchema
+                analysis.data_schema = DataSchema.from_polars(df_final)
+                
+                # 4. Salvar dados no cache e persistir a análise com o novo schema
+                self.data_service.store_data(analysis.id, df_final)
+                self.analysis_service.save_current_analysis() 
+                
+                # 5. Limpeza de estado e retorno ao Dashboard
+                set_state("show_column_mapper", False)
+                set_state("temp_df", None)
+                st.success("Dados validados! Os gráficos foram liberados.")
+                st.rerun()
+
     def _render_widget_sidebar(self) -> None:
         """Render the widget sidebar for adding visualizations."""
         current_analysis = self.analysis_service.get_current_analysis()
 
+        # Se não houver análise ou dados, mostra o botão de upload
         if not current_analysis or not current_analysis.data_schema:
-            st.info("📁 Upload data to add visualizations")
-            if st.button("📂 Upload XLSX", use_container_width=True):
+            st.info("📁 Carregue dados para adicionar visualizações")
+            if st.button("📂 Carregar Excel/CSV", use_container_width=True, type="primary"):
+                # Ativa a flag que a Sidebar principal e o _render_main_layout monitoram
                 set_state("show_uploader", True)
             return
 
-        # Data preview
-        with st.expander("📁 Data Preview", expanded=False):
+        # Preview dos dados (Power Query style)
+        with st.expander("📁 Pré-visualização dos Dados", expanded=False):
+            # Obtém os dados já tratados (Task 1 e 2 aplicadas)
             df = self.data_service.get_cached_data(current_analysis.id)
             if df is not None:
                 render_data_preview(current_analysis.data_schema, df)
 
-        # Widget palette
+        # Paleta de Widgets (Gráficos disponíveis)
         from presentation.widgets import render_widget_palette
 
         render_widget_palette(
             current_analysis.data_schema, self._start_visualization_config
         )
 
-        # Check if we're configuring a new visualization
+        # Diálogos de configuração (Modais de criação/edição)
         if get_state("configuring_new_viz"):
             self._render_config_dialog()
 
-        # Check if we're editing an existing visualization
         if get_state("editing_viz_id"):
             self._render_edit_config_dialog()
 
@@ -375,33 +469,20 @@ class DashboardBuilderApp:
         set_state("show_uploader", True)
 
     def _process_uploaded_file(self, uploaded_file, name: str) -> None:
-        """Process an uploaded XLSX file."""
-        try:
-            # Create new analysis
-            analysis = self.analysis_service.create_analysis(name)
-
-            # Read file bytes
+        try: # <--- O try começa aqui
             file_bytes = uploaded_file.getvalue()
-
-            # Load data and get schema
             schema, df = self.data_service.load_excel_from_bytes(
-                file_bytes, uploaded_file.name, analysis.id
+                file_bytes, uploaded_file.name, "temp_id"
             )
-
-            # Update analysis with schema
-            analysis.data_schema = schema
-            analysis.file_path = uploaded_file.name
-
-            # Save analysis
-            self.analysis_service.save_current_analysis()
-
-            # Hide uploader and rerun
-            set_state("show_uploader", False)
-            st.success(f"✓ Loaded {schema.row_count} rows from {uploaded_file.name}")
+            
+            set_state("temp_df", df)
+            set_state("show_column_mapper", True)
+            set_state("pending_upload_name", name)
+            set_state("pending_file_name", uploaded_file.name)
+            
             st.rerun()
-
-        except Exception as e:
-            st.error(f"Error loading file: {str(e)}")
+        except Exception as e: # <--- O except deve estar alinhado com o try
+            st.error(f"Erro ao processar arquivo: {str(e)}")
 
     def _on_select_analysis(self, analysis_id: str) -> None:
         """Handle analysis selection."""

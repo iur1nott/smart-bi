@@ -1,0 +1,289 @@
+{
+  "id": "5a918dd8-a458-4dd2-96b7-400db7ef2838",
+  "name": "Planilha Pok\u00e9mon para Teste de Projeto",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "Treinador",
+        "data_type": "categorical",
+        "sample_values": [
+          "Ash Ketchum",
+          "Misty",
+          "Brock",
+          "Iuri",
+          "Gary Oak",
+          "Ash Ketchum",
+          "Jessie",
+          "James",
+          "Iuri",
+          "???"
+        ],
+        "null_count": 0,
+        "unique_count": 8,
+        "statistics": {
+          "top_values": [
+            {
+              "Treinador": "Ash Ketchum",
+              "count": 2
+            },
+            {
+              "Treinador": "Iuri",
+              "count": 2
+            },
+            {
+              "Treinador": "James",
+              "count": 1
+            },
+            {
+              "Treinador": "Misty",
+              "count": 1
+            },
+            {
+              "Treinador": "Gary Oak",
+              "count": 1
+            },
+            {
+              "Treinador": "Brock",
+              "count": 1
+            },
+            {
+              "Treinador": "???",
+              "count": 1
+            },
+            {
+              "Treinador": "Jessie",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "Pok\u00e9mon",
+        "data_type": "text",
+        "sample_values": [
+          "Pikachu",
+          "Staryu",
+          "Onix",
+          "Lucario",
+          "Arcanine",
+          "Charizard",
+          "Meowth",
+          "Victreebel",
+          "Alakazam",
+          "MissingNo"
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo",
+        "data_type": "text",
+        "sample_values": [
+          "El\u00e9trico",
+          "\u00c1gua",
+          "Pedra/Terra",
+          "Lutador/A\u00e7o",
+          "Fogo",
+          "Fogo/Voador",
+          "Normal",
+          "Grama/Veneno",
+          "Ps\u00edquico",
+          "???"
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {}
+      },
+      {
+        "name": "N\u00edvel",
+        "data_type": "numeric",
+        "sample_values": [
+          25,
+          18,
+          30,
+          45,
+          42,
+          50,
+          15,
+          28,
+          38,
+          0
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {
+          "min": 0.0,
+          "max": 50.0,
+          "mean": 29.1,
+          "median": 29.0,
+          "std": 15.358312986059953,
+          "sum": 291.0
+        }
+      },
+      {
+        "name": "Data da Captura",
+        "data_type": "datetime",
+        "sample_values": [
+          "2026-01-15 00:00:00",
+          "2026-02-12 00:00:00",
+          "2026-03-05 00:00:00",
+          "2026-03-10 00:00:00",
+          "2026-02-20 00:00:00",
+          "2026-03-12 00:00:00",
+          "2026-01-01 00:00:00",
+          "2026-03-18 00:00:00",
+          "2026-03-15 00:00:00",
+          "00/00/0000"
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {
+          "min_date": "00/00/0000",
+          "max_date": "2026-03-18 00:00:00"
+        }
+      },
+      {
+        "name": "Status de Sa\u00fade",
+        "data_type": "categorical",
+        "sample_values": [
+          "Saud\u00e1vel",
+          "Precisando de Cura",
+          "Saud\u00e1vel",
+          "Excelente",
+          "NULL",
+          "Cansado",
+          "Saud\u00e1vel",
+          "Envenenado",
+          "Saud\u00e1vel",
+          "Erro de Sistema"
+        ],
+        "null_count": 0,
+        "unique_count": 7,
+        "statistics": {
+          "top_values": [
+            {
+              "Status de Sa\u00fade": "Saud\u00e1vel",
+              "count": 4
+            },
+            {
+              "Status de Sa\u00fade": "Erro de Sistema",
+              "count": 1
+            },
+            {
+              "Status de Sa\u00fade": "Excelente",
+              "count": 1
+            },
+            {
+              "Status de Sa\u00fade": "Precisando de Cura",
+              "count": 1
+            },
+            {
+              "Status de Sa\u00fade": "Envenenado",
+              "count": 1
+            },
+            {
+              "Status de Sa\u00fade": "NULL",
+              "count": 1
+            },
+            {
+              "Status de Sa\u00fade": "Cansado",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "Peso (kg)",
+        "data_type": "text",
+        "sample_values": [
+          "6.0",
+          "34.5",
+          "210",
+          "54.0",
+          "155",
+          "90.5",
+          "2026-02-04 00:00:00",
+          "2026-05-15 00:00:00",
+          "48.0",
+          "N/A"
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {}
+      },
+      {
+        "name": "Localiza\u00e7\u00e3o",
+        "data_type": "text",
+        "sample_values": [
+          "Pallet Town",
+          "Cerulean Gym",
+          "Pewter City",
+          "Unimed Sinnoh",
+          "Viridian City",
+          "Indigo Plateau",
+          "Team Rocket HQ",
+          "Kanto Route 24",
+          "Laborat\u00f3rio IA",
+          "Cinnabar Island"
+        ],
+        "null_count": 0,
+        "unique_count": 10,
+        "statistics": {}
+      }
+    ],
+    "row_count": 10,
+    "file_name": "Planilha Pok\u00e9mon para Teste de Projeto.xlsx",
+    "file_size": 6109
+  },
+  "slides": [
+    {
+      "id": "e8e2b054-6d26-4e6f-b420-1386c6366871",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "fe6f5fcb-aa3e-4bce-bc20-5efde2e177f7",
+          "config": {
+            "visualization_type": "pie_chart",
+            "title": "Treinador Distribution",
+            "x_column": "Treinador",
+            "y_column": "N\u00edvel",
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-19T16:47:19.491123",
+      "updated_at": "2026-03-19T16:48:49.617255"
+    },
+    {
+      "id": "61d8d047-ae6a-41e5-b375-c55ebc59ecb1",
+      "title": "Slide 2",
+      "visualizations": [],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-19T16:48:20.525542",
+      "updated_at": "2026-03-19T16:48:20.525549"
+    }
+  ],
+  "created_at": "2026-03-19T16:47:19.491068",
+  "updated_at": "2026-03-19T16:48:20.525573",
+  "file_path": "Planilha Pok\u00e9mon para Teste de Projeto.xlsx"
+}

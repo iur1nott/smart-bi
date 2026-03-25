@@ -801,3 +801,46 @@ def render_data_preview(data_schema: DataSchema, df: pl.DataFrame) -> None:
 
     with st.expander("📊 Sample Data", expanded=False):
         st.dataframe(df.head(10).to_pandas(), use_container_width=True)
+
+import streamlit as st
+
+def render_column_mapper(df):
+    """
+    Interface para o usuário mapear as colunas do arquivo para o padrão do sistema.
+    Inclui lógica de detecção automática baseada no nome da coluna.
+    """
+    st.subheader("🛠️ Mapeamento de Colunas")
+    st.info("O sistema tentou identificar as colunas automaticamente. Ajuste se necessário:")
+    
+    mapping = {}
+    # Opções do selectbox: [0] Ignorar, [1] Data, [2] Valor, [3] Categoria, [4] Regional
+    options = ["Ignorar", "Data", "Valor", "Categoria", "Regional"]
+    
+    colunas_arquivo = df.columns
+    cols = st.columns(2)
+    
+    for i, col in enumerate(colunas_arquivo):
+        with cols[i % 2]:
+            # --- LÓGICA DE DETECÇÃO AUTOMÁTICA ---
+            col_lower = col.lower()
+            index_sugerido = 0 # Padrão: Ignorar
+            
+            if any(key in col_lower for key in ["data", "dt_", "emissao", "vencimento"]):
+                index_sugerido = 1 # Sugere "Data"
+            elif any(key in col_lower for key in ["valor", "vlr", "preço", "total", "faturamento", "receita"]):
+                index_sugerido = 2 # Sugere "Valor"
+            elif any(key in col_lower for key in ["categoria", "tipo", "grupo", "especialidade"]):
+                index_sugerido = 3 # Sugere "Categoria"
+            # ---------------------------------------
+
+            choice = st.selectbox(
+                f"Coluna original: **{col}**", 
+                options, 
+                index=index_sugerido, # Aplica a sugestão aqui
+                key=f"map_{col}"
+            )
+            
+            if choice != "Ignorar":
+                mapping[col] = choice
+                
+    return mapping

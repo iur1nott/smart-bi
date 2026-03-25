@@ -9,7 +9,7 @@ from typing import Optional, Dict, List, Any
 from enum import Enum
 import uuid
 import json
-
+import polars as pl
 
 class ColumnType(Enum):
     """Enumeration of supported column data types."""
@@ -88,6 +88,34 @@ class DataSchema:
     row_count: int = 0
     file_name: str = ""
     file_size: int = 0
+
+    @classmethod
+    def from_polars(cls, df: pl.DataFrame) -> "DataSchema":
+        """
+        Cria um DataSchema automaticamente a partir de um DataFrame Polars.
+        Mapeia os tipos do Polars para o ColumnType do sistema.
+        """
+        from .entities import Column # Import local para evitar circular import se necessário
+        
+        new_columns = []
+        for col_name in df.columns:
+            dtype = df.schema[col_name]
+            
+            # Lógica de mapeamento de tipos
+            if dtype in [pl.Float64, pl.Int64, pl.Int32, pl.Decimal]:
+                col_type = ColumnType.NUMERIC
+            elif dtype in [pl.Date, pl.Datetime]:
+                col_type = ColumnType.DATETIME
+            else:
+                col_type = ColumnType.CATEGORICAL
+            
+            # Criando o objeto Column (ajuste o nome do atributo se for 'type' ou 'data_type')
+            new_columns.append(Column(name=col_name, data_type=col_type))
+            
+        return cls(
+            columns=new_columns,
+            row_count=len(df)
+        )
 
     def get_column_names(self) -> List[str]:
         """Get list of all column names."""
@@ -460,3 +488,17 @@ class UserSession:
                 },
             ),
         )
+    @classmethod
+    def from_polars(cls, df: pl.DataFrame) -> "DataSchema":
+        """Gera automaticamente o schema a partir de um DataFrame Polars."""
+        columns = []
+        for col_name in df.columns:
+            dtype = df.schema[col_name]
+            if dtype in [pl.Float64, pl.Int64, pl.Int32]:
+                col_type = ColumnType.NUMERIC
+            elif dtype in [pl.Date, pl.Datetime]:
+                col_type = ColumnType.DATETIME
+            else:
+                col_type = ColumnType.CATEGORICAL
+            columns.append(DataColumn(name=col_name, type=col_type))
+        return cls(columns=columns)
