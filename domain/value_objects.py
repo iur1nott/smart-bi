@@ -290,3 +290,28 @@ class ExportOptions:
             "footer_text": self.footer_text,
             "quality": self.quality,
         }
+    
+    from enum import Enum
+
+from enum import Enum
+
+class VisualizationType(Enum):
+    """Tipos de visualizações suportados pelo Dashboard Builder."""
+
+    BAR = "bar"
+    COLUMN = "column"
+    LINE = "line"
+    AREA = "area"
+    SCATTER = "scatter"
+    PIE = "pie"
+    DONUT = "donut"
+    TABLE = "table"
+    HEATMAP = "heatmap"
+
+    def __str__(self):
+        return self.value
+
+    @classmethod
+    def choices(cls):
+        """Retorna opções para uso em selects/dropdowns."""
+        return [(member.value, member.name.replace("_", " ").title()) for member in cls]

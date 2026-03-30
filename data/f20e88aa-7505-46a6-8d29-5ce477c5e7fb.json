@@ -1,0 +1,450 @@
+{
+  "id": "f20e88aa-7505-46a6-8d29-5ce477c5e7fb",
+  "name": "AGNYKAI DOFUS CLASSES E SETS",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "__UNNAMED__0",
+        "data_type": "text",
+        "sample_values": [
+          "CLASSES PVP",
+          "CRA",
+          "ECAFLIP",
+          "ELIOTROPE",
+          "ENIRIPSA",
+          "ENUTROF",
+          "FECA",
+          "FORJALANÇA",
+          "HUPPERMAGO",
+          "IOP"
+        ],
+        "null_count": 5,
+        "unique_count": 26,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__1",
+        "data_type": "categorical",
+        "sample_values": [
+          "STR",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 6,
+        "unique_count": 5,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__1": "OK",
+              "count": 20
+            },
+            {
+              "__UNNAMED__1": null,
+              "count": 6
+            },
+            {
+              "__UNNAMED__1": "STR",
+              "count": 2
+            },
+            {
+              "__UNNAMED__1": "1200",
+              "count": 2
+            },
+            {
+              "__UNNAMED__1": "ELEMENTO",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "Me siga nas minhas redes sociais (my social medias)",
+        "data_type": "categorical",
+        "sample_values": [
+          "TWITCH",
+          "YOUTUBE",
+          "INSTAGRAM",
+          "TIKTOK",
+          "INT",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 3,
+        "unique_count": 9,
+        "statistics": {
+          "top_values": [
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "OK",
+              "count": 19
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": null,
+              "count": 3
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "0",
+              "count": 2
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "INT",
+              "count": 2
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "TIKTOK",
+              "count": 1
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "INSTAGRAM",
+              "count": 1
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "POTENCIA",
+              "count": 1
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "TWITCH",
+              "count": 1
+            },
+            {
+              "Me siga nas minhas redes sociais (my social medias)": "YOUTUBE",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__3",
+        "data_type": "categorical",
+        "sample_values": [
+          "WWW.TWITCH.TV/AGNYKAI",
+          "WWW.YOUTUBE.COM/AGNYKAI",
+          "WWW.INSTAGRAM.COM/AGNYKAI1/",
+          "WWW.TIKTOK.COM/@AGNYKAI",
+          "AGI",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 2,
+        "unique_count": 9,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__3": "OK",
+              "count": 20
+            },
+            {
+              "__UNNAMED__3": "AGI",
+              "count": 2
+            },
+            {
+              "__UNNAMED__3": "100",
+              "count": 2
+            },
+            {
+              "__UNNAMED__3": null,
+              "count": 2
+            },
+            {
+              "__UNNAMED__3": "DANO FIXO",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "WWW.YOUTUBE.COM/AGNYKAI",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "WWW.TIKTOK.COM/@AGNYKAI",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "WWW.INSTAGRAM.COM/AGNYKAI1/",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "WWW.TWITCH.TV/AGNYKAI",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__4",
+        "data_type": "categorical",
+        "sample_values": [
+          "CHANCE",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 6,
+        "unique_count": 6,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__4": "OK",
+              "count": 20
+            },
+            {
+              "__UNNAMED__4": null,
+              "count": 6
+            },
+            {
+              "__UNNAMED__4": "CHANCE",
+              "count": 2
+            },
+            {
+              "__UNNAMED__4": "DANO CRIT",
+              "count": 1
+            },
+            {
+              "__UNNAMED__4": "200",
+              "count": 1
+            },
+            {
+              "__UNNAMED__4": "160",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__5",
+        "data_type": "categorical",
+        "sample_values": [
+          "PUSH",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "DANO FINAL",
+          "780",
+          "820"
+        ],
+        "null_count": 21,
+        "unique_count": 6,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__5": null,
+              "count": 21
+            },
+            {
+              "__UNNAMED__5": "OK",
+              "count": 6
+            },
+            {
+              "__UNNAMED__5": "DANO FINAL",
+              "count": 1
+            },
+            {
+              "__UNNAMED__5": "PUSH",
+              "count": 1
+            },
+            {
+              "__UNNAMED__5": "780",
+              "count": 1
+            },
+            {
+              "__UNNAMED__5": "820",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__6",
+        "data_type": "categorical",
+        "sample_values": [
+          "FOR/INT",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 27,
+        "unique_count": 3,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__6": null,
+              "count": 27
+            },
+            {
+              "__UNNAMED__6": "OK",
+              "count": 3
+            },
+            {
+              "__UNNAMED__6": "FOR/INT",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "Todas as células possuem links para o respectivo vídeo testando a classe e o elemento selecionado. Algumas células possuem comentários com links para vários modos. Basta passar o mouse na célula e clicar em um dos links que irão aparecer.",
+        "data_type": "categorical",
+        "sample_values": [
+          "FOR/AGI",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 27,
+        "unique_count": 3,
+        "statistics": {
+          "top_values": [
+            {
+              "Todas as células possuem links para o respectivo vídeo testando a classe e o elemento selecionado. Algumas células possuem comentários com links para vários modos. Basta passar o mouse na célula e clicar em um dos links que irão aparecer.": null,
+              "count": 27
+            },
+            {
+              "Todas as células possuem links para o respectivo vídeo testando a classe e o elemento selecionado. Algumas células possuem comentários com links para vários modos. Basta passar o mouse na célula e clicar em um dos links que irão aparecer.": "OK",
+              "count": 3
+            },
+            {
+              "Todas as células possuem links para o respectivo vídeo testando a classe e o elemento selecionado. Algumas células possuem comentários com links para vários modos. Basta passar o mouse na célula e clicar em um dos links que irão aparecer.": "FOR/AGI",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__8",
+        "data_type": "text",
+        "sample_values": [
+          "FOR/SOR",
+          "OK",
+          "OK"
+        ],
+        "null_count": 28,
+        "unique_count": 3,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__9",
+        "data_type": "text",
+        "sample_values": [
+          "AGI/INT",
+          "OK",
+          "OK"
+        ],
+        "null_count": 28,
+        "unique_count": 3,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__10",
+        "data_type": "text",
+        "sample_values": [
+          "INT/SOR",
+          "OK",
+          "OK"
+        ],
+        "null_count": 28,
+        "unique_count": 3,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__11",
+        "data_type": "text",
+        "sample_values": [
+          "AGI/SOR",
+          "OK",
+          "OK"
+        ],
+        "null_count": 28,
+        "unique_count": 3,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__12",
+        "data_type": "categorical",
+        "sample_values": [
+          "MULTI",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK",
+          "OK"
+        ],
+        "null_count": 24,
+        "unique_count": 3,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__12": null,
+              "count": 24
+            },
+            {
+              "__UNNAMED__12": "OK",
+              "count": 6
+            },
+            {
+              "__UNNAMED__12": "MULTI",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__14",
+        "data_type": "text",
+        "sample_values": [
+          " "
+        ],
+        "null_count": 30,
+        "unique_count": 2,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__17",
+        "data_type": "text",
+        "sample_values": [
+          "photo",
+          "20250424143454016"
+        ],
+        "null_count": 29,
+        "unique_count": 3,
+        "statistics": {}
+      }
+    ],
+    "row_count": 31,
+    "file_name": "AGNYKAI DOFUS CLASSES E SETS.xlsx",
+    "file_size": 2081813
+  },
+  "slides": [
+    {
+      "id": "0eb0e643-aa7d-4dd7-ba9e-a42128cffbec",
+      "title": "Slide 1",
+      "visualizations": [],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-30T12:09:52.803876",
+      "updated_at": "2026-03-30T12:09:52.803877"
+    }
+  ],
+  "created_at": "2026-03-30T12:09:52.803859",
+  "updated_at": "2026-03-30T12:09:52.803879",
+  "file_path": null
+}

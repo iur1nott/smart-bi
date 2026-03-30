@@ -1,0 +1,198 @@
+{
+  "id": "fc4b15dd-53d5-4c3d-82e6-6df3d381dc88",
+  "name": "Atividades Práticas_Teóricas (Avaliação)",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "T326 - Ciência de Dados",
+        "data_type": "text",
+        "sample_values": [
+          "Prof. Rilder de Sousa Pires",
+          "Laboratório de Ciência de Dados e Inteligência Artificial (LCDIA)",
+          "Universidade de Fortaleza",
+          "Atividades Práticas/Teóricas: (2,5 pontos)",
+          "Matrícula",
+          "2020807",
+          "2127945",
+          "2210406",
+          "2210465",
+          "2214679"
+        ],
+        "null_count": 0,
+        "unique_count": 32,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__1",
+        "data_type": "text",
+        "sample_values": [
+          "Unidade 1 (1,0 pt)",
+          "0.99",
+          "0.98",
+          "0.8",
+          "0.79",
+          "0.98",
+          "1",
+          "0.31",
+          "0.91",
+          "0.68"
+        ],
+        "null_count": 4,
+        "unique_count": 24,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__2",
+        "data_type": "categorical",
+        "sample_values": [
+          "Unidade 2 (1,0 pt)",
+          "0.96",
+          "0.93",
+          "0.48",
+          "0.69",
+          "0.38",
+          "0.8",
+          "0.8",
+          "0.59",
+          "0.73"
+        ],
+        "null_count": 7,
+        "unique_count": 19,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__2": null,
+              "count": 7
+            },
+            {
+              "__UNNAMED__2": "0.96",
+              "count": 4
+            },
+            {
+              "__UNNAMED__2": "0.8",
+              "count": 3
+            },
+            {
+              "__UNNAMED__2": "0.85",
+              "count": 2
+            },
+            {
+              "__UNNAMED__2": "0.92",
+              "count": 2
+            },
+            {
+              "__UNNAMED__2": "0.25",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.98",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.99",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "1",
+              "count": 1
+            },
+            {
+              "__UNNAMED__2": "0.84",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__3",
+        "data_type": "categorical",
+        "sample_values": [
+          "Unidade 3 (0,5 pt)",
+          "0.475",
+          "0.5",
+          "0.47",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.5",
+          "0.43"
+        ],
+        "null_count": 15,
+        "unique_count": 8,
+        "statistics": {
+          "top_values": [
+            {
+              "__UNNAMED__3": null,
+              "count": 15
+            },
+            {
+              "__UNNAMED__3": "0.5",
+              "count": 10
+            },
+            {
+              "__UNNAMED__3": "0.475",
+              "count": 2
+            },
+            {
+              "__UNNAMED__3": "Unidade 3 (0,5 pt)",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.405",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.47",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.4425",
+              "count": 1
+            },
+            {
+              "__UNNAMED__3": "0.43",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "__UNNAMED__4",
+        "data_type": "text",
+        "sample_values": [
+          "Nota Atv. Práticas/ Teóricas (2,5 pts)",
+          "2.425",
+          "2.41",
+          "1.75",
+          "1.98",
+          "1.36",
+          "1.8",
+          "0.31",
+          "2.21",
+          "1.77"
+        ],
+        "null_count": 4,
+        "unique_count": 28,
+        "statistics": {}
+      }
+    ],
+    "row_count": 32,
+    "file_name": "Atividades Práticas_Teóricas (Avaliação).xlsx",
+    "file_size": 13822
+  },
+  "slides": [
+    {
+      "id": "57f1d44b-0584-464a-b54f-16323235479e",
+      "title": "Slide 1",
+      "visualizations": [],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-30T13:14:49.712401",
+      "updated_at": "2026-03-30T13:14:49.712402"
+    }
+  ],
+  "created_at": "2026-03-30T13:14:49.712385",
+  "updated_at": "2026-03-30T13:14:49.712403",
+  "file_path": "2026-03-30/7cdc5c6e6fa4_Atividades_Praticas_Teoricas_Avaliacao_xlsx.xlsx"
+}
