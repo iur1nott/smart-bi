@@ -6,10 +6,27 @@ All entities follow SOLID principles with single responsibility and proper encap
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, date, time
 from enum import Enum
 import uuid
 import json
+
+
+def _make_json_serializable(value: Any) -> Any:
+    """Convert a value to a JSON-serializable format."""
+    if value is None:
+        return None
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _make_json_serializable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_make_json_serializable(v) for v in value]
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 
 class VisualizationType(Enum):
@@ -38,6 +55,14 @@ class ColumnType(Enum):
     UNKNOWN = "unknown"
 
 
+class ExportFormat(Enum):
+    """Enumeration of supported export formats."""
+
+    PDF = "pdf"
+    LATEX = "latex"
+    HTML = "html"
+
+
 @dataclass
 class Column:
     """
@@ -57,10 +82,10 @@ class Column:
         return {
             "name": self.name,
             "data_type": self.data_type.value,
-            "sample_values": self.sample_values[:10],
+            "sample_values": _make_json_serializable(self.sample_values[:10]),
             "null_count": self.null_count,
             "unique_count": self.unique_count,
-            "statistics": self.statistics,
+            "statistics": _make_json_serializable(self.statistics),
         }
 
     @classmethod
@@ -143,8 +168,8 @@ class DataSchema:
 @dataclass
 class VisualizationConfig:
     """
-    Configuration for a visualization.
-    Contains all parameters needed to render a chart or table.
+    Configuration for a visualization component.
+    Contains all settings needed to render a chart or table.
     """
 
     visualization_type: VisualizationType
@@ -153,11 +178,10 @@ class VisualizationConfig:
     y_column: Optional[str] = None
     color_column: Optional[str] = None
     size_column: Optional[str] = None
-    aggregation: str = "sum"
-    sort_by: Optional[str] = None
-    sort_order: str = "asc"
-    limit: Optional[int] = None
-    filters: List[Dict[str, Any]] = field(default_factory=list)
+    aggregation: str = "sum"  # sum, mean, count, min, max
+    show_legend: bool = True
+    show_grid: bool = True
+    color_scheme: str = "default"
     custom_options: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -170,10 +194,9 @@ class VisualizationConfig:
             "color_column": self.color_column,
             "size_column": self.size_column,
             "aggregation": self.aggregation,
-            "sort_by": self.sort_by,
-            "sort_order": self.sort_order,
-            "limit": self.limit,
-            "filters": self.filters,
+            "show_legend": self.show_legend,
+            "show_grid": self.show_grid,
+            "color_scheme": self.color_scheme,
             "custom_options": self.custom_options,
         }
 
@@ -188,10 +211,9 @@ class VisualizationConfig:
             color_column=data.get("color_column"),
             size_column=data.get("size_column"),
             aggregation=data.get("aggregation", "sum"),
-            sort_by=data.get("sort_by"),
-            sort_order=data.get("sort_order", "asc"),
-            limit=data.get("limit"),
-            filters=data.get("filters", []),
+            show_legend=data.get("show_legend", True),
+            show_grid=data.get("show_grid", True),
+            color_scheme=data.get("color_scheme", "default"),
             custom_options=data.get("custom_options", {}),
         )
 
@@ -199,8 +221,8 @@ class VisualizationConfig:
 @dataclass
 class Visualization:
     """
-    Represents a visualization on a slide.
-    Contains configuration, position, size, and data snapshot.
+    Represents a visualization component on a slide.
+    Contains the configuration, position, size, and any comments.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -231,7 +253,7 @@ class Visualization:
     def from_dict(cls, data: Dict[str, Any]) -> "Visualization":
         """Deserialize visualization from dictionary."""
         return cls(
-            id=data["id"],
+            id=data.get("id", str(uuid.uuid4())),
             config=VisualizationConfig.from_dict(data["config"])
             if data.get("config")
             else None,
@@ -251,15 +273,14 @@ class Visualization:
 @dataclass
 class Slide:
     """
-    Represents a slide/page in an analysis.
-    Contains visualizations and layout information.
+    Represents a slide in an analysis dashboard.
+    Contains a collection of visualizations with layout information.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: str = "Untitled Slide"
     visualizations: List[Visualization] = field(default_factory=list)
-    layout: str = "single"
-    background_color: str = "#ffffff"
+    layout: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
@@ -289,9 +310,8 @@ class Slide:
         return {
             "id": self.id,
             "title": self.title,
-            "visualizations": [v.to_dict() for v in self.visualizations],
+            "visualizations": [viz.to_dict() for viz in self.visualizations],
             "layout": self.layout,
-            "background_color": self.background_color,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -300,13 +320,12 @@ class Slide:
     def from_dict(cls, data: Dict[str, Any]) -> "Slide":
         """Deserialize slide from dictionary."""
         return cls(
-            id=data["id"],
+            id=data.get("id", str(uuid.uuid4())),
             title=data.get("title", "Untitled Slide"),
             visualizations=[
                 Visualization.from_dict(v) for v in data.get("visualizations", [])
             ],
-            layout=data.get("layout", "single"),
-            background_color=data.get("background_color", "#ffffff"),
+            layout=data.get("layout", {}),
             created_at=datetime.fromisoformat(data["created_at"])
             if data.get("created_at")
             else datetime.now(),
@@ -319,13 +338,13 @@ class Slide:
 @dataclass
 class Analysis:
     """
-    Represents a complete analysis with data, slides, and metadata.
-    This is the aggregate root for the analysis domain.
+    Represents a complete analysis project.
+    Contains slides, data schema, and analysis settings.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
     name: str = "New Analysis"
-    user_id: str = ""
     slides: List[Slide] = field(default_factory=list)
     data_schema: Optional[DataSchema] = None
     file_path: str = ""
@@ -333,22 +352,16 @@ class Analysis:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
-    def __post_init__(self) -> None:
-        """Ensure at least one slide exists."""
-        if not self.slides:
-            self.slides = [Slide(title="Slide 1")]
-
     def add_slide(self, slide: Optional[Slide] = None) -> Slide:
-        """Add a new slide to the analysis."""
-        new_slide = slide or Slide(title=f"Slide {len(self.slides) + 1}")
-        self.slides.append(new_slide)
+        """Add a slide to the analysis."""
+        if slide is None:
+            slide = Slide(title=f"Slide {len(self.slides) + 1}")
+        self.slides.append(slide)
         self.updated_at = datetime.now()
-        return new_slide
+        return slide
 
     def remove_slide(self, slide_id: str) -> bool:
         """Remove a slide from the analysis."""
-        if len(self.slides) <= 1:
-            return False
         for i, slide in enumerate(self.slides):
             if slide.id == slide_id:
                 self.slides.pop(i)
@@ -363,13 +376,23 @@ class Analysis:
                 return slide
         return None
 
+    def reorder_slides(self, new_order: List[str]) -> None:
+        """Reorder slides based on a list of slide IDs."""
+        reordered = []
+        for slide_id in new_order:
+            slide = self.get_slide(slide_id)
+            if slide:
+                reordered.append(slide)
+        self.slides = reordered
+        self.updated_at = datetime.now()
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize analysis to dictionary."""
         return {
             "id": self.id,
-            "name": self.name,
             "user_id": self.user_id,
-            "slides": [s.to_dict() for s in self.slides],
+            "name": self.name,
+            "slides": [slide.to_dict() for slide in self.slides],
             "data_schema": self.data_schema.to_dict() if self.data_schema else None,
             "file_path": self.file_path,
             "settings": self.settings,
@@ -381,9 +404,9 @@ class Analysis:
     def from_dict(cls, data: Dict[str, Any]) -> "Analysis":
         """Deserialize analysis from dictionary."""
         return cls(
-            id=data["id"],
+            id=data.get("id", str(uuid.uuid4())),
+            user_id=data.get("user_id"),
             name=data.get("name", "New Analysis"),
-            user_id=data.get("user_id", ""),
             slides=[Slide.from_dict(s) for s in data.get("slides", [])],
             data_schema=DataSchema.from_dict(data["data_schema"])
             if data.get("data_schema")
@@ -422,17 +445,18 @@ class User:
         """Update the last login timestamp."""
         self.last_login = datetime.now()
 
-    def update_settings(self, settings: Dict[str, Any]) -> None:
+    def update_settings(self, new_settings: Dict[str, Any]) -> None:
         """Update user settings."""
-        self.settings.update(settings)
+        self.settings.update(new_settings)
         self.updated_at = datetime.now()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize user to dictionary (excludes password hash)."""
+        """Serialize user to dictionary."""
         return {
             "id": self.id,
             "username": self.username,
             "email": self.email,
+            "password_hash": self.password_hash,
             "full_name": self.full_name,
             "is_active": self.is_active,
             "is_admin": self.is_admin,
@@ -446,7 +470,7 @@ class User:
     def from_dict(cls, data: Dict[str, Any]) -> "User":
         """Deserialize user from dictionary."""
         return cls(
-            id=data["id"],
+            id=data.get("id", str(uuid.uuid4())),
             username=data.get("username", ""),
             email=data.get("email", ""),
             password_hash=data.get("password_hash", ""),
@@ -469,75 +493,46 @@ class User:
 @dataclass
 class UserSession:
     """
-    Represents a user session with current state.
-    Tracks the current analysis and slide being edited.
+    Represents a user session.
+    Contains session state for authenticated users.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""
-    analyses: List[Analysis] = field(default_factory=list)
+    token_hash: str = ""
+    session_data: Dict[str, Any] = field(default_factory=dict)
+    settings: Dict[str, Any] = field(default_factory=dict)
     current_analysis_id: Optional[str] = None
     current_slide_id: Optional[str] = None
-    settings: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
+    expires_at: Optional[datetime] = None
+    last_activity: datetime = field(default_factory=datetime.now)
 
-    def create_analysis(self, name: str = "New Analysis") -> Analysis:
-        """Create a new analysis and add it to the session."""
-        analysis = Analysis(name=name, user_id=self.user_id)
-        self.analyses.append(analysis)
-        self.current_analysis_id = analysis.id
-        if analysis.slides:
-            self.current_slide_id = analysis.slides[0].id
-        return analysis
+    def is_expired(self) -> bool:
+        """Check if session has expired."""
+        if self.expires_at is None:
+            return False
+        return datetime.now() > self.expires_at
 
-    def get_current_analysis(self) -> Optional[Analysis]:
-        """Get the currently active analysis."""
-        if not self.current_analysis_id:
-            return None
-        for analysis in self.analyses:
-            if analysis.id == self.current_analysis_id:
-                return analysis
-        return None
-
-    def get_current_slide(self) -> Optional[Slide]:
-        """Get the currently active slide."""
-        analysis = self.get_current_analysis()
-        if not analysis or not self.current_slide_id:
-            if analysis and analysis.slides:
-                return analysis.slides[0]
-            return None
-        return analysis.get_slide(self.current_slide_id)
-
-    def delete_analysis(self, analysis_id: str) -> bool:
-        """Remove an analysis from the session."""
-        for i, analysis in enumerate(self.analyses):
-            if analysis.id == analysis_id:
-                self.analyses.pop(i)
-                if self.current_analysis_id == analysis_id:
-                    self.current_analysis_id = (
-                        self.analyses[0].id if self.analyses else None
-                    )
-                    if self.current_analysis_id and self.analyses:
-                        self.current_slide_id = (
-                            self.analyses[0].slides[0].id
-                            if self.analyses[0].slides
-                            else None
-                        )
-                    else:
-                        self.current_slide_id = None
-                return True
-        return False
+    def update_activity(self) -> None:
+        """Update last activity timestamp."""
+        self.last_activity = datetime.now()
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize session to dictionary."""
         return {
             "id": self.id,
             "user_id": self.user_id,
-            "analyses": [a.to_dict() for a in self.analyses],
+            "token_hash": self.token_hash,
+            "session_data": self.session_data,
+            "settings": self.settings,
             "current_analysis_id": self.current_analysis_id,
             "current_slide_id": self.current_slide_id,
-            "settings": self.settings,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "last_activity": self.last_activity.isoformat()
+            if self.last_activity
+            else None,
         }
 
     @classmethod
@@ -546,11 +541,18 @@ class UserSession:
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             user_id=data.get("user_id", ""),
-            analyses=[Analysis.from_dict(a) for a in data.get("analyses", [])],
+            token_hash=data.get("token_hash", ""),
+            session_data=data.get("session_data", {}),
+            settings=data.get("settings", {}),
             current_analysis_id=data.get("current_analysis_id"),
             current_slide_id=data.get("current_slide_id"),
-            settings=data.get("settings", {}),
             created_at=datetime.fromisoformat(data["created_at"])
             if data.get("created_at")
+            else datetime.now(),
+            expires_at=datetime.fromisoformat(data["expires_at"])
+            if data.get("expires_at")
+            else None,
+            last_activity=datetime.fromisoformat(data["last_activity"])
+            if data.get("last_activity")
             else datetime.now(),
         )

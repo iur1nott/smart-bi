@@ -3,17 +3,14 @@ Session Repository Implementation - PostgreSQL-based session persistence.
 Implements the SessionRepository interface using SQLAlchemy.
 """
 
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-import hashlib
-import secrets
+import logging
 
-from domain.entities import UserSession, Analysis
+from domain.entities import UserSession
 from domain.repositories import SessionRepository
 from infrastructure.database import Database, get_database
 from infrastructure.models import SessionModel
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +21,6 @@ class SessionRepositoryImpl(SessionRepository):
     Handles session persistence operations using SQLAlchemy ORM.
     """
 
-    SESSION_DURATION_HOURS = 24  # Session expires after 24 hours
-
     def __init__(self, database: Optional[Database] = None):
         """
         Initialize the repository with a database connection.
@@ -34,6 +29,7 @@ class SessionRepositoryImpl(SessionRepository):
             database: Optional Database instance. Uses global instance if not provided.
         """
         self._db = database or get_database()
+        self._session_timeout_hours = 24  # Default session timeout
 
     def save(self, session: UserSession) -> bool:
         """
@@ -54,30 +50,33 @@ class SessionRepositoryImpl(SessionRepository):
                     .first()
                 )
 
-                # Generate token hash for the session
-                token_hash = self._generate_token_hash(session.id)
-
-                # Serialize session data
-                session_data = session.to_dict()
+                # Set expiration if not set
+                expires_at = session.expires_at
+                if expires_at is None:
+                    expires_at = datetime.utcnow() + timedelta(
+                        hours=self._session_timeout_hours
+                    )
 
                 if existing:
                     # Update existing session
-                    existing.session_data = session_data
-                    existing.last_activity = datetime.utcnow()
-                    existing.expires_at = datetime.utcnow() + timedelta(
-                        hours=self.SESSION_DURATION_HOURS
-                    )
+                    existing.user_id = session.user_id
+                    existing.token_hash = session.token_hash
+                    existing.session_data = session.session_data
+                    existing.settings = session.settings
+                    existing.current_analysis_id = session.current_analysis_id
+                    existing.current_slide_id = session.current_slide_id
+                    existing.expires_at = expires_at
+                    existing.last_activity = session.last_activity or datetime.utcnow()
                 else:
                     # Create new session
                     model = SessionModel(
                         id=session.id,
                         user_id=session.user_id,
-                        token_hash=token_hash,
-                        session_data=session_data,
-                        created_at=session.created_at,
-                        expires_at=datetime.utcnow()
-                        + timedelta(hours=self.SESSION_DURATION_HOURS),
-                        last_activity=datetime.utcnow(),
+                        token_hash=session.token_hash,
+                        session_data=session.session_data,
+                        settings=session.settings,
+                        expires_at=expires_at,
+                        last_activity=session.last_activity or datetime.utcnow(),
                     )
                     db_session.add(model)
 
@@ -115,7 +114,7 @@ class SessionRepositoryImpl(SessionRepository):
 
     def find_by_user_id(self, user_id: str) -> Optional[UserSession]:
         """
-        Find the active session for a user.
+        Find a session by user ID.
 
         Args:
             user_id: The unique identifier of the user
@@ -125,6 +124,7 @@ class SessionRepositoryImpl(SessionRepository):
         """
         try:
             with self._db.session_scope() as db_session:
+                # Get the most recent active session for the user
                 model = (
                     db_session.query(SessionModel)
                     .filter(
@@ -143,6 +143,60 @@ class SessionRepositoryImpl(SessionRepository):
             logger.error(f"Error finding session for user {user_id}: {e}")
             return None
 
+    def find_by_token_hash(self, token_hash: str) -> Optional[UserSession]:
+        """
+        Find a session by its token hash.
+
+        Args:
+            token_hash: The hash of the session token
+
+        Returns:
+            UserSession entity if found, None otherwise
+        """
+        try:
+            with self._db.session_scope() as db_session:
+                model = (
+                    db_session.query(SessionModel)
+                    .filter(SessionModel.token_hash == token_hash)
+                    .first()
+                )
+
+                if model and not model.is_expired():
+                    return self._model_to_entity(model)
+                return None
+
+        except Exception as e:
+            logger.error(f"Error finding session by token hash: {e}")
+            return None
+
+    def find_all_active(self, user_id: str) -> List[UserSession]:
+        """
+        Find all active sessions for a user.
+
+        Args:
+            user_id: The unique identifier of the user
+
+        Returns:
+            List of active UserSession entities
+        """
+        try:
+            with self._db.session_scope() as db_session:
+                models = (
+                    db_session.query(SessionModel)
+                    .filter(
+                        SessionModel.user_id == user_id,
+                        SessionModel.expires_at > datetime.utcnow(),
+                    )
+                    .order_by(SessionModel.last_activity.desc())
+                    .all()
+                )
+
+                return [self._model_to_entity(m) for m in models]
+
+        except Exception as e:
+            logger.error(f"Error finding active sessions for user {user_id}: {e}")
+            return []
+
     def delete(self, session_id: str) -> bool:
         """
         Delete a session from the database.
@@ -155,12 +209,16 @@ class SessionRepositoryImpl(SessionRepository):
         """
         try:
             with self._db.session_scope() as db_session:
-                deleted = (
+                model = (
                     db_session.query(SessionModel)
                     .filter(SessionModel.id == session_id)
-                    .delete()
+                    .first()
                 )
-                return deleted > 0
+
+                if model:
+                    db_session.delete(model)
+                    return True
+                return False
 
         except Exception as e:
             logger.error(f"Error deleting session {session_id}: {e}")
@@ -187,28 +245,25 @@ class SessionRepositoryImpl(SessionRepository):
             logger.error(f"Error deleting sessions for user {user_id}: {e}")
             return False
 
-    def cleanup_expired(self, max_age_hours: int = 24) -> int:
+    def delete_expired(self) -> int:
         """
-        Clean up expired sessions.
-
-        Args:
-            max_age_hours: Maximum session age in hours
+        Delete all expired sessions from the database.
 
         Returns:
-            Number of sessions cleaned up
+            Number of sessions deleted
         """
         try:
             with self._db.session_scope() as db_session:
-                cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
-                deleted = (
+                result = (
                     db_session.query(SessionModel)
-                    .filter(SessionModel.expires_at < cutoff)
+                    .filter(SessionModel.expires_at <= datetime.utcnow())
                     .delete()
                 )
-                return deleted
+                logger.info(f"Deleted {result} expired sessions")
+                return result
 
         except Exception as e:
-            logger.error(f"Error cleaning up expired sessions: {e}")
+            logger.error(f"Error deleting expired sessions: {e}")
             return 0
 
     def update_activity(self, session_id: str) -> bool:
@@ -223,55 +278,71 @@ class SessionRepositoryImpl(SessionRepository):
         """
         try:
             with self._db.session_scope() as db_session:
-                updated = (
+                model = (
                     db_session.query(SessionModel)
                     .filter(SessionModel.id == session_id)
-                    .update(
-                        {
-                            "last_activity": datetime.utcnow(),
-                            "expires_at": datetime.utcnow()
-                            + timedelta(hours=self.SESSION_DURATION_HOURS),
-                        }
-                    )
+                    .first()
                 )
-                return updated > 0
+
+                if model:
+                    model.last_activity = datetime.utcnow()
+                    # Extend expiration on activity
+                    model.expires_at = datetime.utcnow() + timedelta(
+                        hours=self._session_timeout_hours
+                    )
+                    return True
+                return False
 
         except Exception as e:
-            logger.error(f"Error updating session activity {session_id}: {e}")
+            logger.error(f"Error updating activity for session {session_id}: {e}")
             return False
 
-    def _generate_token_hash(self, session_id: str) -> str:
+    def update_session_data(self, session_id: str, data: dict) -> bool:
         """
-        Generate a secure token hash for the session.
+        Update session data for a session.
 
         Args:
-            session_id: The session ID to hash
+            session_id: The unique identifier of the session
+            data: New session data to merge
 
         Returns:
-            SHA-256 hash of the session ID with salt
+            True if successful, False otherwise
         """
-        salt = secrets.token_hex(16)
-        data = f"{session_id}:{salt}"
-        return hashlib.sha256(data.encode()).hexdigest()
+        try:
+            with self._db.session_scope() as db_session:
+                model = (
+                    db_session.query(SessionModel)
+                    .filter(SessionModel.id == session_id)
+                    .first()
+                )
+
+                if model:
+                    current_data = model.session_data or {}
+                    current_data.update(data)
+                    model.session_data = current_data
+                    model.last_activity = datetime.utcnow()
+                    return True
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating session data for session {session_id}: {e}")
+            return False
 
     def _model_to_entity(self, model: SessionModel) -> UserSession:
-        """
-        Convert a SQLAlchemy model to a domain entity.
-
-        Args:
-            model: SQLAlchemy SessionModel instance
-
-        Returns:
-            UserSession domain entity
-        """
-        session_data = model.session_data or {}
-
+        """Convert a SQLAlchemy model to a domain entity."""
         return UserSession(
             id=str(model.id),
             user_id=str(model.user_id),
-            analyses=[Analysis.from_dict(a) for a in session_data.get("analyses", [])],
-            current_analysis_id=session_data.get("current_analysis_id"),
-            current_slide_id=session_data.get("current_slide_id"),
-            settings=session_data.get("settings", {}),
+            token_hash=model.token_hash,
+            session_data=model.session_data or {},
+            settings=model.settings or {},
+            current_analysis_id=str(model.current_analysis_id)
+            if model.current_analysis_id
+            else None,
+            current_slide_id=str(model.current_slide_id)
+            if model.current_slide_id
+            else None,
             created_at=model.created_at,
+            expires_at=model.expires_at,
+            last_activity=model.last_activity,
         )

@@ -122,9 +122,7 @@ class AggregationConfig:
             "last",
         ]
         if self.aggregation_function not in valid_functions:
-            raise ValueError(
-                f"Invalid aggregation function: {self.aggregation_function}"
-            )
+            raise ValueError(f"Invalid aggregation function: {self.aggregation_function}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -247,6 +245,40 @@ class ChartColors:
         """Get a gradient of colors for a given count."""
         return [self.get_color(i) for i in range(count)]
 
+    # Preset color schemes
+    PRESET_SCHEMES = {
+        "default": {
+            "primary": "#10B981",
+            "secondary": "#3B82F6",
+            "tertiary": "#F59E0B",
+        },
+        "corporate": {
+            "primary": "#2563EB",
+            "secondary": "#DC2626",
+            "tertiary": "#059669",
+        },
+        "pastel": {
+            "primary": "#A5B4FC",
+            "secondary": "#FCA5A5",
+            "tertiary": "#86EFAC",
+        },
+        "dark": {
+            "primary": "#4299E1",
+            "secondary": "#F6AD55",
+            "tertiary": "#68D391",
+        },
+    }
+
+    @classmethod
+    def from_scheme(cls, scheme_name: str) -> "ChartColors":
+        """Create colors from a preset scheme."""
+        scheme = cls.PRESET_SCHEMES.get(scheme_name, cls.PRESET_SCHEMES["default"])
+        return cls(
+            primary=scheme["primary"],
+            secondary=scheme["secondary"],
+            tertiary=scheme["tertiary"],
+        )
+
 
 @dataclass(frozen=True)
 class Position:
@@ -257,6 +289,10 @@ class Position:
 
     x: float
     y: float
+
+    def move(self, dx: float, dy: float) -> "Position":
+        """Create a new position moved by the specified offset."""
+        return Position(x=self.x + dx, y=self.y + dy)
 
     def to_dict(self) -> Dict[str, float]:
         """Serialize to dictionary."""
@@ -291,6 +327,10 @@ class Size:
     def aspect_ratio(self) -> float:
         """Calculate aspect ratio."""
         return self.width / self.height if self.height > 0 else 0
+
+    def resize(self, scale: float) -> "Size":
+        """Create a new size scaled by the factor."""
+        return Size(width=self.width * scale, height=self.height * scale)
 
 
 @dataclass(frozen=True)
@@ -348,3 +388,57 @@ class SortOrder:
     def from_dict(cls, data: Dict[str, str]) -> "SortOrder":
         """Deserialize from dictionary."""
         return cls(column=data["column"], direction=data.get("direction", "asc"))
+
+
+@dataclass(frozen=True)
+class FileMetadata:
+    """
+    Immutable value object representing file metadata.
+    Used for tracking uploaded file information.
+    """
+
+    file_name: str
+    file_size: int
+    file_extension: str
+    upload_timestamp: str
+
+    @property
+    def size_mb(self) -> float:
+        """Get file size in megabytes."""
+        return self.file_size / (1024 * 1024)
+
+    @property
+    def is_valid_excel(self) -> bool:
+        """Check if file is a valid Excel file."""
+        return self.file_extension.lower() in [".xlsx", ".xls"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "file_name": self.file_name,
+            "file_size": self.file_size,
+            "file_extension": self.file_extension,
+            "upload_timestamp": self.upload_timestamp,
+        }
+
+
+@dataclass(frozen=True)
+class LayoutConstraints:
+    """
+    Immutable value object for layout constraints.
+    Used for validating element sizes and positions.
+    """
+
+    min_width: float = 200
+    max_width: float = 1200
+    min_height: float = 150
+    max_height: float = 800
+    margin: float = 16
+    padding: float = 8
+
+    def is_valid_size(self, size: Size) -> bool:
+        """Check if size is within constraints."""
+        return (
+            self.min_width <= size.width <= self.max_width
+            and self.min_height <= size.height <= self.max_height
+        )

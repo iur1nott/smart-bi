@@ -1,6 +1,6 @@
 """
 Chart Factory - Creates Plotly charts from visualization configurations.
-Provides a unified interface for all chart types.
+Provides a unified interface for all chart types with Polars DataFrame support.
 """
 
 from typing import Dict, Any, Optional
@@ -50,6 +50,7 @@ class ChartFactory:
 
         fig = creator(df, config)
 
+        # Apply common layout settings
         fig.update_layout(
             title={
                 "text": config.title,
@@ -62,16 +63,35 @@ class ChartFactory:
             margin={"l": 60, "r": 40, "t": 60, "b": 60},
         )
 
-        fig.update_xaxes(
-            gridcolor="#E2E8F0",
-            linecolor="#CBD5E1",
-        )
-        fig.update_yaxes(
-            gridcolor="#E2E8F0",
-            linecolor="#CBD5E1",
-        )
+        # Apply grid settings
+        if config.show_grid:
+            fig.update_xaxes(gridcolor="#E2E8F0", linecolor="#CBD5E1")
+            fig.update_yaxes(gridcolor="#E2E8F0", linecolor="#CBD5E1")
+        else:
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=False)
+
+        # Apply legend settings
+        fig.update_layout(showlegend=config.show_legend)
 
         return fig
+
+    def export_figure_to_bytes(
+        self, fig: go.Figure, format: str = "png", scale: float = 2.0
+    ) -> bytes:
+        """
+        Export a figure to bytes.
+
+        Args:
+            fig: Plotly Figure object
+            format: Output format (png, jpg, svg, pdf)
+            scale: Image scale factor
+
+        Returns:
+            Image bytes
+        """
+        img_bytes = fig.to_image(format=format, scale=scale)
+        return img_bytes
 
     def _prepare_aggregated_data(
         self, df: pl.DataFrame, config: VisualizationConfig
@@ -80,6 +100,7 @@ class ChartFactory:
         if not config.x_column or not config.y_column:
             return df
 
+        # Determine aggregation expression
         if config.aggregation == "sum":
             agg_expr = pl.col(config.y_column).sum()
         elif config.aggregation == "mean":
@@ -93,6 +114,7 @@ class ChartFactory:
         else:
             agg_expr = pl.col(config.y_column).sum()
 
+        # Build group columns
         group_cols = [config.x_column]
         if config.color_column and config.color_column in df.columns:
             group_cols.append(config.color_column)
@@ -100,16 +122,17 @@ class ChartFactory:
         result = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
         return result.sort(config.x_column)
 
-    def _create_bar_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_bar_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a bar chart."""
-        agg_df = self._prepare_aggregated_data(df, config)
-        pandas_df = agg_df.to_pandas()
+        if config.x_column and config.y_column:
+            df = self._prepare_aggregated_data(df, config)
 
-        if config.color_column and config.color_column in pandas_df.columns:
+        # Convert to pandas for Plotly Express
+        pdf = df.to_pandas()
+
+        if config.color_column and config.color_column in pdf.columns:
             fig = px.bar(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color=config.color_column,
@@ -118,29 +141,24 @@ class ChartFactory:
             )
         else:
             fig = px.bar(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color_discrete_sequence=[self.colors.primary],
             )
 
-        fig.update_traces(
-            marker_line_width=0,
-            marker_opacity=0.9,
-        )
-
         return fig
 
-    def _create_line_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_line_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a line chart."""
-        agg_df = self._prepare_aggregated_data(df, config)
-        pandas_df = agg_df.to_pandas()
+        if config.x_column and config.y_column:
+            df = self._prepare_aggregated_data(df, config)
 
-        if config.color_column and config.color_column in pandas_df.columns:
+        pdf = df.to_pandas()
+
+        if config.color_column and config.color_column in pdf.columns:
             fig = px.line(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color=config.color_column,
@@ -149,53 +167,45 @@ class ChartFactory:
             )
         else:
             fig = px.line(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color_discrete_sequence=[self.colors.primary],
                 markers=True,
             )
 
-        fig.update_traces(
-            line_width=2,
-            marker_size=6,
-        )
-
         return fig
 
-    def _create_pie_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_pie_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a pie chart."""
-        agg_df = self._prepare_aggregated_data(df, config)
-        pandas_df = agg_df.to_pandas()
+        if not config.x_column or not config.y_column:
+            # Return empty figure
+            return go.Figure()
+
+        df = self._prepare_aggregated_data(df, config)
+        pdf = df.to_pandas()
 
         fig = px.pie(
-            pandas_df,
+            pdf,
             names=config.x_column,
             values=config.y_column,
             color_discrete_sequence=self.colors.palette,
         )
 
-        fig.update_traces(
-            textinfo="percent+label",
-            textposition="outside",
-            marker_line_width=1,
-            marker_line_color="white",
-        )
+        fig.update_traces(textposition="inside", textinfo="percent+label")
 
         return fig
 
-    def _create_area_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_area_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create an area chart."""
-        agg_df = self._prepare_aggregated_data(df, config)
-        pandas_df = agg_df.to_pandas()
+        if config.x_column and config.y_column:
+            df = self._prepare_aggregated_data(df, config)
 
-        if config.color_column and config.color_column in pandas_df.columns:
+        pdf = df.to_pandas()
+
+        if config.color_column and config.color_column in pdf.columns:
             fig = px.area(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color=config.color_column,
@@ -203,189 +213,102 @@ class ChartFactory:
             )
         else:
             fig = px.area(
-                pandas_df,
+                pdf,
                 x=config.x_column,
                 y=config.y_column,
                 color_discrete_sequence=[self.colors.primary],
             )
 
-        fig.update_traces(
-            line_width=2,
-            opacity=0.7,
-        )
-
         return fig
 
-    def _create_scatter_plot(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_scatter_plot(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a scatter plot."""
-        pandas_df = df.to_pandas()
+        pdf = df.to_pandas()
 
-        if not config.x_column or not config.y_column:
-            raise ValueError("Scatter plot requires both x and y columns")
+        scatter_kwargs = {
+            "x": config.x_column,
+            "y": config.y_column,
+            "color_discrete_sequence": [self.colors.primary],
+        }
 
-        size_col = (
-            config.size_column if config.size_column in pandas_df.columns else None
-        )
-        color_col = (
-            config.color_column if config.color_column in pandas_df.columns else None
-        )
+        if config.color_column and config.color_column in pdf.columns:
+            scatter_kwargs["color"] = config.color_column
+            scatter_kwargs["color_discrete_sequence"] = self.colors.palette
 
-        fig = px.scatter(
-            pandas_df,
-            x=config.x_column,
-            y=config.y_column,
-            color=color_col,
-            size=size_col,
-            color_discrete_sequence=self.colors.palette,
-            opacity=0.7,
-        )
+        if config.size_column and config.size_column in pdf.columns:
+            scatter_kwargs["size"] = config.size_column
 
-        fig.update_traces(
-            marker_line_width=1,
-            marker_line_color="white",
-        )
+        fig = px.scatter(pdf, **scatter_kwargs)
 
         return fig
 
-    def _create_histogram(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_histogram(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a histogram."""
-        pandas_df = df.to_pandas()
-
         if not config.x_column:
-            raise ValueError("Histogram requires an x column")
+            return go.Figure()
 
-        color_col = (
-            config.color_column if config.color_column in pandas_df.columns else None
-        )
+        pdf = df.to_pandas()
 
         fig = px.histogram(
-            pandas_df,
+            pdf,
             x=config.x_column,
-            color=color_col,
+            color=config.color_column if config.color_column else None,
             color_discrete_sequence=self.colors.palette,
             nbins=30,
-            opacity=0.8,
-        )
-
-        fig.update_traces(
-            marker_line_width=1,
-            marker_line_color="white",
         )
 
         return fig
 
-    def _create_box_plot(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_box_plot(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a box plot."""
-        pandas_df = df.to_pandas()
+        pdf = df.to_pandas()
 
-        if not config.y_column:
-            raise ValueError("Box plot requires a y column")
-
-        x_col = config.x_column if config.x_column in pandas_df.columns else None
-
-        fig = px.box(
-            pandas_df,
-            x=x_col,
-            y=config.y_column,
-            color=x_col,
-            color_discrete_sequence=self.colors.palette,
-        )
+        if config.x_column and config.y_column:
+            fig = px.box(
+                pdf,
+                x=config.x_column,
+                y=config.y_column,
+                color=config.color_column if config.color_column else None,
+                color_discrete_sequence=self.colors.palette,
+            )
+        elif config.y_column:
+            fig = px.box(
+                pdf,
+                y=config.y_column,
+                color_discrete_sequence=[self.colors.primary],
+            )
+        else:
+            return go.Figure()
 
         return fig
 
-    def _create_heatmap(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
+    def _create_heatmap(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
         """Create a heatmap."""
         if not config.x_column or not config.y_column:
-            raise ValueError("Heatmap requires x and y columns")
+            return go.Figure()
 
-        agg_df = df.group_by(
-            [config.x_column, config.color_column or config.x_column]
-        ).agg(pl.col(config.y_column).sum().alias(config.y_column))
-
-        pivot_df = agg_df.pivot(
-            values=config.y_column,
-            index=config.x_column,
-            columns=config.color_column or config.x_column,
+        # Prepare aggregated data
+        agg_col = config.color_column or config.y_column
+        agg_df = df.group_by([config.x_column, config.y_column]).agg(
+            pl.col(agg_col).sum().alias("value")
         )
 
-        data = pivot_df.drop(config.x_column).to_numpy()
+        pdf = agg_df.to_pandas()
+
+        # Pivot for heatmap
+        pivot_df = pdf.pivot(
+            index=config.y_column,
+            columns=config.x_column,
+            values="value",
+        ).fillna(0)
 
         fig = go.Figure(
             data=go.Heatmap(
-                z=data,
-                x=pivot_df.columns[1:],
-                y=pivot_df[config.x_column].to_list(),
+                z=pivot_df.values,
+                x=pivot_df.columns,
+                y=pivot_df.index,
                 colorscale="Viridis",
             )
         )
 
         return fig
-
-    def export_figure_to_bytes(
-        self,
-        fig: go.Figure,
-        format: str = "png",
-        width: int = 1200,
-        height: int = 800,
-        scale: float = 2.0,
-    ) -> bytes:
-        """
-        Export a figure to bytes.
-
-        Args:
-            fig: Plotly Figure object
-            format: Output format (png, jpeg, svg, pdf)
-            width: Width in pixels
-            height: Height in pixels
-            scale: Scale factor for resolution
-
-        Returns:
-            Image bytes
-        """
-        return fig.to_image(
-            format=format,
-            width=width,
-            height=height,
-            scale=scale,
-        )
-
-    def export_figure_to_file(
-        self,
-        fig: go.Figure,
-        filepath: str,
-        format: Optional[str] = None,
-        width: int = 1200,
-        height: int = 800,
-        scale: float = 2.0,
-    ) -> str:
-        """
-        Export a figure to a file.
-
-        Args:
-            fig: Plotly Figure object
-            filepath: Path for output file
-            format: Output format (inferred from extension if not provided)
-            width: Width in pixels
-            height: Height in pixels
-            scale: Scale factor for resolution
-
-        Returns:
-            Path to the saved file
-        """
-        if format is None:
-            format = filepath.split(".")[-1]
-
-        img_bytes = self.export_figure_to_bytes(fig, format, width, height, scale)
-
-        with open(filepath, "wb") as f:
-            f.write(img_bytes)
-
-        return filepath

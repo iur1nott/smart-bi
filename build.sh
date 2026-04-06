@@ -13,7 +13,8 @@ cd "$SCRIPT_DIR"
 source .venv/bin/activate
 
 # Remove processos que estejam obstruindo a porta
-lsof -t -i :8501 | xargs kill -9
+lsof -t -i :8501,5432 | xargs kill -9
 
 # Roda a aplicação Streamlit
-streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+# streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+docker-compose up -d --build app

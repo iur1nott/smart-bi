@@ -1,5 +1,5 @@
--- Dashboard Builder - Database Initialization Script
--- Creates the necessary tables and indexes for the application
+-- Dashboard Builder Database Initialization
+-- This script creates the necessary tables and extensions
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -11,17 +11,17 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(100) DEFAULT '',
-    is_active BOOLEAN DEFAULT TRUE,
-    is_admin BOOLEAN DEFAULT FALSE,
-    settings JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP WITH TIME ZONE
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    settings JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_login TIMESTAMP
 );
 
--- Create index on username and email for faster lookups
-CREATE INDEX IF NOT EXISTS ix_users_username ON users (LOWER(username));
-CREATE INDEX IF NOT EXISTS ix_users_email ON users (LOWER(email));
+-- Create indexes for users
+CREATE INDEX IF NOT EXISTS ix_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS ix_users_email ON users(email);
 
 -- Create analyses table
 CREATE TABLE IF NOT EXISTS analyses (
@@ -30,35 +30,35 @@ CREATE TABLE IF NOT EXISTS analyses (
     name VARCHAR(200) NOT NULL,
     file_path VARCHAR(500) DEFAULT '',
     data_schema JSONB,
-    slides JSONB DEFAULT '[]',
-    settings JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    slides JSONB DEFAULT '[]'::jsonb,
+    settings JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Create index on user_id for faster user-specific queries
-CREATE INDEX IF NOT EXISTS ix_analyses_user_id ON analyses (user_id);
-CREATE INDEX IF NOT EXISTS ix_analyses_updated_at ON analyses (updated_at DESC);
+-- Create indexes for analyses
+CREATE INDEX IF NOT EXISTS ix_analyses_user_id ON analyses(user_id);
+CREATE INDEX IF NOT EXISTS ix_analyses_updated_at ON analyses(updated_at);
 
 -- Create sessions table
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash VARCHAR(64) UNIQUE NOT NULL,
-    session_data JSONB DEFAULT '{}',
+    session_data JSONB DEFAULT '{}'::jsonb,
     ip_address VARCHAR(45),
     user_agent VARCHAR(500),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    last_activity TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Create indexes on sessions
-CREATE INDEX IF NOT EXISTS ix_sessions_user_id ON sessions (user_id);
-CREATE INDEX IF NOT EXISTS ix_sessions_token_hash ON sessions (token_hash);
-CREATE INDEX IF NOT EXISTS ix_sessions_expires_at ON sessions (expires_at);
+-- Create indexes for sessions
+CREATE INDEX IF NOT EXISTS ix_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS ix_sessions_token_hash ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS ix_sessions_expires_at ON sessions(expires_at);
 
--- Create data_files table for storing uploaded file content
+-- Create data_files table for caching uploaded files
 CREATE TABLE IF NOT EXISTS data_files (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -67,12 +67,12 @@ CREATE TABLE IF NOT EXISTS data_files (
     file_size INTEGER DEFAULT 0,
     file_content BYTEA,
     mime_type VARCHAR(100) DEFAULT 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Create indexes on data_files
-CREATE INDEX IF NOT EXISTS ix_data_files_user_id ON data_files (user_id);
-CREATE INDEX IF NOT EXISTS ix_data_files_analysis_id ON data_files (analysis_id);
+-- Create indexes for data_files
+CREATE INDEX IF NOT EXISTS ix_data_files_user_id ON data_files(user_id);
+CREATE INDEX IF NOT EXISTS ix_data_files_analysis_id ON data_files(analysis_id);
 
 -- Create export_jobs table for tracking exports
 CREATE TABLE IF NOT EXISTS export_jobs (
@@ -80,29 +80,29 @@ CREATE TABLE IF NOT EXISTS export_jobs (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     analysis_id UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
     format VARCHAR(20) NOT NULL,
-    options JSONB DEFAULT '{}',
-    status VARCHAR(20) DEFAULT 'pending',
+    options JSONB DEFAULT '{}'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
     file_path VARCHAR(500),
     error_message TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP WITH TIME ZONE
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP
 );
 
--- Create indexes on export_jobs
-CREATE INDEX IF NOT EXISTS ix_export_jobs_user_id ON export_jobs (user_id);
-CREATE INDEX IF NOT EXISTS ix_export_jobs_analysis_id ON export_jobs (analysis_id);
-CREATE INDEX IF NOT EXISTS ix_export_jobs_status ON export_jobs (status);
+-- Create indexes for export_jobs
+CREATE INDEX IF NOT EXISTS ix_export_jobs_user_id ON export_jobs(user_id);
+CREATE INDEX IF NOT EXISTS ix_export_jobs_analysis_id ON export_jobs(analysis_id);
+CREATE INDEX IF NOT EXISTS ix_export_jobs_status ON export_jobs(status);
 
--- Create updated_at trigger function
+-- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = NOW();
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
--- Apply triggers to tables
+-- Create triggers for updated_at
 CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
@@ -113,18 +113,13 @@ CREATE TRIGGER update_analyses_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Create default admin user (password: admin123)
--- Note: Change this password immediately in production!
-INSERT INTO users (username, email, password_hash, full_name, is_admin, is_active)
+-- Insert a default admin user (password: admin123)
+-- Note: In production, change this password immediately!
+INSERT INTO users (username, email, password_hash, full_name, is_admin)
 VALUES (
     'admin',
-    'admin@localhost.com',
-    '100000$' || encode(gen_random_bytes(32), 'hex') || '$' || encode(sha256('admin123'::bytea), 'hex'),
+    'admin@example.com',
+    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtWnN6F6V6F6.',
     'Administrator',
-    TRUE,
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
-
--- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO dashboard_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO dashboard_user;

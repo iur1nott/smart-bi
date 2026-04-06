@@ -1,5 +1,37 @@
-# Dashboard Builder - Dependencies (managed by UV)
-# This file is auto-generated from pyproject.toml
-# Use `uv sync` to install dependencies
+# Core dependencies
+streamlit>=1.28.0
+polars>=0.20.0
+openpyxl>=3.1.2
+xlsx2csv>=0.8.2
+fastexcel>=0.10.0
 
--r pyproject.toml
+# Visualization
+plotly>=5.18.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+kaleido>=0.2.1
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
+# Authentication
+pyjwt>=2.8.0
+bcrypt>=4.1.0
+
+# Export
+reportlab>=4.0.0
+
+# Templates
+jinja2>=3.1.2
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Optional: for development
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# black>=24.0.0
+# ruff>=0.1.0
+# mypy>=1.7.0

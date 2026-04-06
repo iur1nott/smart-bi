@@ -1,6 +1,6 @@
 """
-Repository Implementations - Concrete implementations of repository interfaces.
-These classes handle the actual database operations using SQLAlchemy.
+Repository Implementations - PostgreSQL-based persistence layer.
+Implements the repository interfaces using SQLAlchemy ORM.
 """
 
 from .user_repository import UserRepositoryImpl

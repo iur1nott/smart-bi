@@ -1,6 +1,6 @@
 """
-Data Service - Handles data loading, processing, and transformation.
-Implements business logic for working with Excel files and data operations.
+Data Service - Handles data processing and transformation operations.
+Follows Single Responsibility Principle - only handles data operations.
 """
 
 from typing import Dict, List, Any, Optional, Tuple
@@ -8,9 +8,9 @@ import polars as pl
 from pathlib import Path
 import tempfile
 import os
-import io
 import logging
 
+from config import settings, Constants
 from domain.entities import (
     Analysis,
     DataSchema,
@@ -19,6 +19,7 @@ from domain.entities import (
     Visualization,
     VisualizationConfig,
     VisualizationType,
+    Slide,
 )
 from domain.value_objects import FilterCondition, AggregationConfig
 
@@ -35,7 +36,7 @@ class DataService:
     """
 
     def __init__(self):
-        """Initialize the data service with a data cache."""
+        """Initialize the data service."""
         self._data_cache: Dict[str, pl.DataFrame] = {}
 
     def load_excel_file(
@@ -51,14 +52,14 @@ class DataService:
         Returns:
             Tuple of DataSchema and Polars DataFrame
         """
+        # Read the Excel file using Polars
         df = pl.read_excel(file_path)
+
+        # Cache the dataframe
         self._data_cache[analysis_id] = df
 
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-        file_name = os.path.basename(file_path)
-
-        schema = self._infer_schema(df, file_name, file_size)
-        logger.info(f"Loaded Excel file: {file_name} with {len(df)} rows")
+        # Generate schema
+        schema = self._infer_schema(df, file_path)
 
         return schema, df
 
@@ -76,6 +77,7 @@ class DataService:
         Returns:
             Tuple of DataSchema and Polars DataFrame
         """
+        # Write bytes to temporary file
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
@@ -84,17 +86,15 @@ class DataService:
             df = pl.read_excel(tmp_path)
             self._data_cache[analysis_id] = df
             schema = self._infer_schema(df, file_name, len(file_bytes))
-            logger.info(f"Loaded Excel from bytes: {file_name} with {len(df)} rows")
             return schema, df
         finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            os.unlink(tmp_path)
 
     def load_excel_from_streamlit(
         self, uploaded_file: Any, analysis_id: str
     ) -> Tuple[DataSchema, pl.DataFrame]:
         """
-        Load an Excel file from a Streamlit UploadedFile object.
+        Load an Excel file from Streamlit's file uploader.
 
         Args:
             uploaded_file: Streamlit UploadedFile object
@@ -105,30 +105,6 @@ class DataService:
         """
         file_bytes = uploaded_file.getvalue()
         return self.load_excel_from_bytes(file_bytes, uploaded_file.name, analysis_id)
-
-    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
-        """
-        Get cached DataFrame for an analysis.
-
-        Args:
-            analysis_id: The analysis ID
-
-        Returns:
-            Cached DataFrame or None if not found
-        """
-        return self._data_cache.get(analysis_id)
-
-    def clear_cache(self, analysis_id: Optional[str] = None) -> None:
-        """
-        Clear cached data for specific analysis or all.
-
-        Args:
-            analysis_id: Optional specific analysis ID to clear
-        """
-        if analysis_id:
-            self._data_cache.pop(analysis_id, None)
-        else:
-            self._data_cache.clear()
 
     def _infer_schema(
         self, df: pl.DataFrame, file_name: str, file_size: int = 0
@@ -150,7 +126,14 @@ class DataService:
             col_series = df[col_name]
             col_type = self._detect_column_type(col_series)
 
-            sample_values = col_series.drop_nulls().head(10).to_list()
+            # Get sample values (using configurable count)
+            sample_values = (
+                col_series.drop_nulls()
+                .head(settings.data.sample_values_count)
+                .to_list()
+            )
+
+            # Calculate statistics
             statistics = self._calculate_statistics(col_series, col_type)
 
             column = Column(
@@ -164,10 +147,7 @@ class DataService:
             columns.append(column)
 
         return DataSchema(
-            columns=columns,
-            row_count=len(df),
-            file_name=file_name,
-            file_size=file_size,
+            columns=columns, row_count=len(df), file_name=file_name, file_size=file_size
         )
 
     def _detect_column_type(self, series: pl.Series) -> ColumnType:
@@ -182,8 +162,8 @@ class DataService:
         """
         dtype = series.dtype
 
-        # Check Polars dtype for numeric types
-        numeric_dtypes = [
+        # Check Polars dtype
+        if dtype in [
             pl.Int8,
             pl.Int16,
             pl.Int32,
@@ -194,20 +174,18 @@ class DataService:
             pl.UInt64,
             pl.Float32,
             pl.Float64,
-        ]
-        if dtype in numeric_dtypes:
+        ]:
             return ColumnType.NUMERIC
 
-        # Check for datetime types
         if dtype in [pl.Date, pl.Datetime, pl.Time]:
             return ColumnType.DATETIME
 
-        # Check for boolean
         if dtype == pl.Boolean:
             return ColumnType.BOOLEAN
 
-        # For string types, infer further
-        if dtype in [pl.String, pl.Utf8]:
+        # For string types, try to infer further
+        if dtype == pl.String or dtype == pl.Utf8:
+            # Check if it could be categorical
             null_count = series.null_count()
             non_null_count = len(series) - null_count
 
@@ -218,8 +196,8 @@ class DataService:
                 series.n_unique() / non_null_count if non_null_count > 0 else 1.0
             )
 
-            # If unique ratio is low, it's likely categorical
-            if unique_ratio < 0.5:
+            # If unique ratio is low, it's likely categorical (using configurable threshold)
+            if unique_ratio < settings.data.categorical_threshold:
                 return ColumnType.CATEGORICAL
 
             # Check if values look like dates
@@ -227,8 +205,8 @@ class DataService:
             if sample and self._looks_like_datetime(sample):
                 return ColumnType.DATETIME
 
-            # Default to text for high cardinality strings
-            if unique_ratio > 0.8:
+            # Default to text for high cardinality strings (using configurable threshold)
+            if unique_ratio > settings.data.text_threshold:
                 return ColumnType.TEXT
 
             return ColumnType.CATEGORICAL
@@ -239,12 +217,8 @@ class DataService:
         """Check if string values look like datetime values."""
         import re
 
-        date_patterns = [
-            r"^\d{4}-\d{2}-\d{2}",
-            r"^\d{2}/\d{2}/\d{4}",
-            r"^\d{2}-\d{2}-\d{4}",
-            r"^\d{4}/\d{2}/\d{2}",
-        ]
+        # Use date patterns from Constants
+        date_patterns = Constants.DATE_PATTERNS
 
         if not values:
             return False
@@ -254,7 +228,10 @@ class DataService:
             if any(re.match(pattern, str(val)) for pattern in date_patterns):
                 matches += 1
 
-        return matches / min(len(values), 10) > 0.7
+        # Use configurable threshold
+        return (
+            matches / min(len(values), 10) > settings.data.datetime_detection_threshold
+        )
 
     def _calculate_statistics(
         self, series: pl.Series, col_type: ColumnType
@@ -302,6 +279,21 @@ class DataService:
 
         return stats
 
+    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+        """Get cached DataFrame for an analysis."""
+        return self._data_cache.get(analysis_id)
+
+    def set_cached_data(self, analysis_id: str, df: pl.DataFrame) -> None:
+        """Set cached DataFrame for an analysis."""
+        self._data_cache[analysis_id] = df
+
+    def clear_cache(self, analysis_id: Optional[str] = None):
+        """Clear cached data for specific analysis or all."""
+        if analysis_id:
+            self._data_cache.pop(analysis_id, None)
+        else:
+            self._data_cache.clear()
+
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]
     ) -> pl.DataFrame:
@@ -339,11 +331,13 @@ class DataService:
             elif f.operator == "ends_with":
                 result = result.filter(col.str.ends_with(str(f.value)))
             elif f.operator == "in":
-                values = f.value if isinstance(f.value, list) else [f.value]
-                result = result.filter(col.is_in(values))
+                result = result.filter(
+                    col.is_in(f.value if isinstance(f.value, list) else [f.value])
+                )
             elif f.operator == "not_in":
-                values = f.value if isinstance(f.value, list) else [f.value]
-                result = result.filter(~col.is_in(values))
+                result = result.filter(
+                    ~col.is_in(f.value if isinstance(f.value, list) else [f.value])
+                )
             elif f.operator == "is_null":
                 result = result.filter(col.is_null())
             elif f.operator == "is_not_null":
@@ -395,124 +389,12 @@ class DataService:
 
         return result
 
-    def prepare_visualization_data(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> Dict[str, Any]:
-        """
-        Prepare data for a specific visualization type.
-
-        Args:
-            df: Input DataFrame
-            config: Visualization configuration
-
-        Returns:
-            Dictionary with processed data ready for visualization
-        """
-        result = {"type": config.visualization_type.value}
-
-        # Apply aggregation if needed
-        if config.x_column and config.y_column and config.aggregation:
-            if config.visualization_type not in [
-                VisualizationType.SCATTER_PLOT,
-                VisualizationType.HISTOGRAM,
-            ]:
-                agg_config = AggregationConfig(
-                    group_by_columns=(config.x_column,),
-                    aggregation_column=config.y_column,
-                    aggregation_function=config.aggregation,
-                )
-                df = self.apply_aggregation(df, agg_config)
-
-        # Extract data based on visualization type
-        if config.visualization_type == VisualizationType.TABLE:
-            result["data"] = df.to_pandas().to_dict(orient="records")
-            result["columns"] = df.columns
-
-        elif config.visualization_type in [
-            VisualizationType.LINE_CHART,
-            VisualizationType.BAR_CHART,
-            VisualizationType.AREA_CHART,
-        ]:
-            if config.x_column:
-                result["x"] = df[config.x_column].to_list()
-            if config.y_column:
-                agg_col_name = (
-                    f"{config.y_column}_{config.aggregation}"
-                    if config.aggregation != "sum"
-                    else config.y_column
-                )
-                y_col = agg_col_name if agg_col_name in df.columns else config.y_column
-                result["y"] = df[y_col].to_list()
-            if config.color_column:
-                result["color"] = df[config.color_column].to_list()
-
-        elif config.visualization_type == VisualizationType.PIE_CHART:
-            if config.x_column and config.y_column:
-                agg_col_name = (
-                    f"{config.y_column}_{config.aggregation}"
-                    if config.aggregation != "sum"
-                    else config.y_column
-                )
-                y_col = agg_col_name if agg_col_name in df.columns else config.y_column
-                result["labels"] = df[config.x_column].to_list()
-                result["values"] = df[y_col].to_list()
-
-        elif config.visualization_type == VisualizationType.SCATTER_PLOT:
-            if config.x_column:
-                result["x"] = df[config.x_column].to_list()
-            if config.y_column:
-                result["y"] = df[config.y_column].to_list()
-            if config.color_column:
-                result["color"] = df[config.color_column].to_list()
-            if config.size_column:
-                result["size"] = df[config.size_column].to_list()
-
-        elif config.visualization_type == VisualizationType.HISTOGRAM:
-            if config.x_column:
-                result["x"] = df[config.x_column].to_list()
-
-        elif config.visualization_type == VisualizationType.BOX_PLOT:
-            if config.y_column:
-                result["y"] = df[config.y_column].to_list()
-            if config.x_column:
-                result["x"] = df[config.x_column].to_list()
-
-        elif config.visualization_type == VisualizationType.METRIC_CARD:
-            if config.y_column:
-                col = df[config.y_column]
-                if config.aggregation == "mean":
-                    result["value"] = float(col.mean())
-                elif config.aggregation == "sum":
-                    result["value"] = float(col.sum())
-                elif config.aggregation == "count":
-                    result["value"] = int(col.count())
-                elif config.aggregation == "min":
-                    result["value"] = float(col.min())
-                elif config.aggregation == "max":
-                    result["value"] = float(col.max())
-                else:
-                    result["value"] = float(col.sum())
-                result["format"] = "number"
-
-        elif config.visualization_type == VisualizationType.HEATMAP:
-            if config.x_column and config.y_column:
-                pivot_df = df.pivot(
-                    values=config.y_column,
-                    index=config.x_column,
-                    columns=config.color_column
-                    if config.color_column
-                    else config.x_column,
-                )
-                result["data"] = pivot_df.to_numpy().tolist()
-                result["x_labels"] = pivot_df.columns
-                result["y_labels"] = pivot_df[config.x_column].to_list()
-
-        return result
-
     def get_column_unique_values(
-        self, df: pl.DataFrame, column_name: str, limit: int = 100
+        self, df: pl.DataFrame, column_name: str, limit: Optional[int] = None
     ) -> List[Any]:
         """Get unique values from a column."""
+        if limit is None:
+            limit = settings.data.max_unique_values_display
         return df[column_name].unique().head(limit).to_list()
 
     def get_numeric_summary(
@@ -529,17 +411,3 @@ class DataService:
             "q1": float(col.quantile(0.25)),
             "q3": float(col.quantile(0.75)),
         }
-
-    def export_to_csv(self, df: pl.DataFrame, output_path: str) -> str:
-        """
-        Export DataFrame to CSV file.
-
-        Args:
-            df: DataFrame to export
-            output_path: Path for output file
-
-        Returns:
-            Path to the exported file
-        """
-        df.write_csv(output_path)
-        return output_path

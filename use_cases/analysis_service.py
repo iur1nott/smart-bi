@@ -72,10 +72,11 @@ class AnalysisService:
             user_id=self._current_user_id,
         )
 
+        # Add initial slide
+        analysis.add_slide(Slide(title="Slide 1"))
+
         if self._analysis_repository.save(analysis):
-            logger.info(
-                f"Created analysis: {analysis.id} for user {self._current_user_id}"
-            )
+            logger.info(f"Created analysis: {analysis.id} for user {self._current_user_id}")
             return analysis
 
         return None
@@ -207,9 +208,7 @@ class AnalysisService:
         analysis.updated_at = datetime.now()
         return self._analysis_repository.save(analysis)
 
-    def add_slide(
-        self, analysis_id: str, title: Optional[str] = None
-    ) -> Optional[Slide]:
+    def add_slide(self, analysis_id: str, title: Optional[str] = None) -> Optional[Slide]:
         """
         Add a new slide to an analysis.
 
@@ -291,12 +290,36 @@ class AnalysisService:
         if not analysis:
             return False
 
+        # Prevent deleting the last slide
+        if len(analysis.slides) <= 1:
+            logger.warning("Cannot delete the last slide in an analysis")
+            return False
+
         result = analysis.remove_slide(slide_id)
         if result:
             analysis.updated_at = datetime.now()
             self._analysis_repository.save(analysis)
 
         return result
+
+    def reorder_slides(self, analysis_id: str, new_order: List[str]) -> bool:
+        """
+        Reorder slides in an analysis.
+
+        Args:
+            analysis_id: The unique identifier of the analysis
+            new_order: List of slide IDs in the new order
+
+        Returns:
+            True if successful, False otherwise
+        """
+        analysis = self.get_analysis(analysis_id)
+        if not analysis:
+            return False
+
+        analysis.reorder_slides(new_order)
+        analysis.updated_at = datetime.now()
+        return self._analysis_repository.save(analysis)
 
     def add_visualization(
         self,
@@ -394,9 +417,7 @@ class AnalysisService:
 
         return self._analysis_repository.save(analysis)
 
-    def delete_visualization(
-        self, analysis_id: str, slide_id: str, viz_id: str
-    ) -> bool:
+    def delete_visualization(self, analysis_id: str, slide_id: str, viz_id: str) -> bool:
         """
         Delete a visualization from a slide.
 
@@ -420,91 +441,68 @@ class AnalysisService:
         if result:
             analysis.updated_at = datetime.now()
             self._analysis_repository.save(analysis)
+            logger.info(f"Deleted visualization {viz_id} from slide {slide_id}")
 
         return result
 
-    def update_visualization_data(
-        self,
-        analysis_id: str,
-        slide_id: str,
-        viz_id: str,
-        data_snapshot: Dict[str, Any],
-    ) -> bool:
+    def get_visualization(
+        self, analysis_id: str, slide_id: str, viz_id: str
+    ) -> Optional[Visualization]:
         """
-        Update the data snapshot for a visualization.
+        Get a specific visualization.
 
         Args:
             analysis_id: The unique identifier of the analysis
             slide_id: The unique identifier of the slide
             viz_id: The unique identifier of the visualization
-            data_snapshot: Data snapshot to store
 
         Returns:
-            True if successful, False otherwise
+            Visualization entity if found, None otherwise
         """
-        analysis = self.get_analysis(analysis_id)
-        if not analysis:
-            return False
-
-        slide = analysis.get_slide(slide_id)
+        slide = self.get_slide(analysis_id, slide_id)
         if not slide:
-            return False
+            return None
 
-        viz = slide.get_visualization(viz_id)
-        if not viz:
-            return False
+        return slide.get_visualization(viz_id)
 
-        viz.data_snapshot = data_snapshot
-        viz.updated_at = datetime.now()
-
-        return self._analysis_repository.save(analysis)
-
-    def search_analyses(self, query: str, limit: int = 20) -> List[Analysis]:
+    def duplicate_slide(self, analysis_id: str, slide_id: str) -> Optional[Slide]:
         """
-        Search analyses by name.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results
-
-        Returns:
-            List of matching Analysis entities
-        """
-        if not self._current_user_id:
-            return []
-
-        return self._analysis_repository.search(self._current_user_id, query, limit)
-
-    def get_analysis_count(self) -> int:
-        """
-        Get total count of analyses for the current user.
-
-        Returns:
-            Total count of analyses
-        """
-        if not self._current_user_id:
-            return 0
-
-        return self._analysis_repository.count_by_user(self._current_user_id)
-
-    def update_analysis_settings(
-        self, analysis_id: str, settings: Dict[str, Any]
-    ) -> bool:
-        """
-        Update settings for an analysis.
+        Duplicate a slide within an analysis.
 
         Args:
             analysis_id: The unique identifier of the analysis
-            settings: Settings to merge
+            slide_id: The unique identifier of the slide to duplicate
 
         Returns:
-            True if successful, False otherwise
+            New Slide entity if successful, None otherwise
         """
         analysis = self.get_analysis(analysis_id)
         if not analysis:
-            return False
+            return None
 
-        analysis.settings.update(settings)
+        original_slide = analysis.get_slide(slide_id)
+        if not original_slide:
+            return None
+
+        # Create a copy of the slide
+        new_slide = Slide(
+            title=f"{original_slide.title} (Copy)",
+        )
+
+        # Copy visualizations
+        for viz in original_slide.visualizations:
+            new_viz = Visualization(
+                config=viz.config,
+                position=viz.position.copy(),
+                size=viz.size.copy(),
+                comment=viz.comment,
+            )
+            new_slide.add_visualization(new_viz)
+
+        analysis.add_slide(new_slide)
         analysis.updated_at = datetime.now()
 
-        return self._analysis_repository.save(analysis)
+        if self._analysis_repository.save(analysis):
+            return new_slide
+
+        return None

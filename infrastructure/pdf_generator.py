@@ -1,341 +1,345 @@
 """
-PDF Generator - Alternative PDF generation using ReportLab.
-Provides fallback when LaTeX compilation is not available.
+PDF Generator - Generates PDF reports from analyses.
+Creates professional export documents with charts and tables.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Tuple
+import io
 import os
 from datetime import datetime
-import io
-import base64
+import logging
 
 from domain.entities import Analysis, Slide, Visualization, VisualizationType
 from domain.value_objects import ExportOptions
 
+logger = logging.getLogger(__name__)
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, LETTER, LEGAL
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+        Image,
+        PageBreak,
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+    logger.warning("reportlab not installed. PDF export will be limited.")
+
 
 class PDFGenerator:
     """
-    PDF generator using ReportLab library.
-    Provides direct PDF generation without LaTeX dependency.
+    Generates PDF documents from analysis data.
+    Supports multiple paper sizes and orientations.
     """
 
-    def __init__(self, output_dir: str = "download"):
-        """Initialize PDF generator."""
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    # Paper size mapping
+    PAPER_SIZES = {
+        "a4": A4 if HAS_REPORTLAB else None,
+        "letter": LETTER if HAS_REPORTLAB else None,
+        "legal": LEGAL if HAS_REPORTLAB else None,
+    }
+
+    def __init__(self):
+        """Initialize the PDF generator."""
+        self.styles = self._create_styles() if HAS_REPORTLAB else None
+
+    def _create_styles(self) -> Dict[str, Any]:
+        """Create custom styles for PDF documents."""
+        styles = getSampleStyleSheet()
+
+        # Custom title style
+        styles.add(
+            ParagraphStyle(
+                name="CustomTitle",
+                parent=styles["Heading1"],
+                fontSize=24,
+                spaceAfter=30,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#1E293B"),
+            )
+        )
+
+        # Custom heading style
+        styles.add(
+            ParagraphStyle(
+                name="CustomHeading",
+                parent=styles["Heading2"],
+                fontSize=16,
+                spaceAfter=12,
+                spaceBefore=20,
+                textColor=colors.HexColor("#334155"),
+            )
+        )
+
+        # Custom body style
+        styles.add(
+            ParagraphStyle(
+                name="CustomBody",
+                parent=styles["Normal"],
+                fontSize=11,
+                spaceAfter=8,
+                textColor=colors.HexColor("#475569"),
+            )
+        )
+
+        # Comment style
+        styles.add(
+            ParagraphStyle(
+                name="Comment",
+                parent=styles["Normal"],
+                fontSize=10,
+                fontName="Helvetica-Oblique",
+                textColor=colors.HexColor("#64748B"),
+                leftIndent=10,
+                rightIndent=10,
+                spaceBefore=5,
+                spaceAfter=10,
+                backColor=colors.HexColor("#F8FAFC"),
+                borderPadding=5,
+            )
+        )
+
+        return styles
 
     def generate_pdf(
         self,
         analysis: Analysis,
         options: ExportOptions,
-        chart_images: Optional[Dict[str, bytes]] = None,
-    ) -> str:
+        chart_images: Dict[str, bytes],
+        output_path: Optional[str] = None,
+    ) -> Optional[str]:
         """
-        Generate PDF from analysis using ReportLab.
+        Generate a PDF document from an analysis.
 
         Args:
-            analysis: Analysis to export
-            options: Export options
-            chart_images: Dictionary of visualization ID to image bytes
+            analysis: The analysis entity to export
+            options: Export configuration options
+            chart_images: Dictionary mapping visualization IDs to chart image bytes
+            output_path: Optional output file path
 
         Returns:
-            Path to generated PDF file
+            Path to the generated PDF file, or None on failure
         """
-        from reportlab.lib.pagesizes import A4, letter, legal
-        from reportlab.platypus import (
-            SimpleDocTemplate,
-            Paragraph,
-            Spacer,
-            Image,
-            Table,
-            TableStyle,
-            PageBreak,
-            KeepTogether,
-        )
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib import colors
-        from reportlab.lib.units import mm, inch
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        if not HAS_REPORTLAB:
+            logger.error("reportlab not installed. Cannot generate PDF.")
+            return None
 
-        # Determine page size
-        page_sizes = {"a4": A4, "letter": letter, "legal": legal}
-        page_size = page_sizes.get(options.paper_size, A4)
+        if output_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"exports/{analysis.name}_{timestamp}.pdf"
 
-        # Adjust for orientation
-        if options.orientation == "landscape":
-            page_size = (page_size[1], page_size[0])
-
-        # Create output file path
-        output_filename = f"{analysis.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        output_path = os.path.join(self.output_dir, output_filename)
-
-        # Create document
-        doc = SimpleDocTemplate(
-            output_path,
-            pagesize=page_size,
-            rightMargin=options.margin_mm * mm,
-            leftMargin=options.margin_mm * mm,
-            topMargin=options.margin_mm * mm,
-            bottomMargin=options.margin_mm * mm,
-        )
-
-        # Get styles
-        styles = getSampleStyleSheet()
-
-        # Custom styles
-        title_style = ParagraphStyle(
-            "CustomTitle",
-            parent=styles["Title"],
-            fontSize=24,
-            spaceAfter=30,
-            alignment=TA_CENTER,
-        )
-
-        heading_style = ParagraphStyle(
-            "CustomHeading",
-            parent=styles["Heading2"],
-            fontSize=16,
-            spaceBefore=20,
-            spaceAfter=10,
-            textColor=colors.HexColor("#2c3e50"),
-        )
-
-        body_style = ParagraphStyle(
-            "CustomBody",
-            parent=styles["Normal"],
-            fontSize=options.font_size,
-            spaceAfter=12,
-        )
-
-        caption_style = ParagraphStyle(
-            "Caption",
-            parent=styles["Normal"],
-            fontSize=10,
-            textColor=colors.gray,
-            alignment=TA_CENTER,
-            spaceBefore=6,
-            spaceAfter=12,
-        )
-
-        comment_style = ParagraphStyle(
-            "Comment",
-            parent=styles["Italic"],
-            fontSize=10,
-            textColor=colors.HexColor("#7f8c8d"),
-            leftIndent=20,
-            spaceAfter=12,
-        )
-
-        # Build content
-        story = []
-
-        # Add header if specified
-        if options.header_text:
-            header_para = Paragraph(options.header_text, body_style)
-            story.append(header_para)
-            story.append(Spacer(1, 20))
-
-        # Document title
-        story.append(Paragraph(analysis.name, title_style))
-        story.append(Spacer(1, 20))
-
-        # Add timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        story.append(Paragraph(f"Generated: {timestamp}", caption_style))
-        story.append(Spacer(1, 30))
-
-        # Process each slide
-        for slide_index, slide in enumerate(analysis.slides):
-            slide_content = []
-
-            # Slide title
-            slide_content.append(Paragraph(slide.title, heading_style))
-            slide_content.append(Spacer(1, 10))
-
-            # Process visualizations
-            for viz in slide.visualizations:
-                viz_elements = self._process_visualization(
-                    viz, chart_images, styles, caption_style, comment_style, options
-                )
-                slide_content.extend(viz_elements)
-
-            # Add slide content to story
-            if slide_index < len(analysis.slides) - 1:
-                slide_content.append(PageBreak())
-
-            story.extend(slide_content)
-
-        # Add footer if specified
-        if options.footer_text:
-            story.append(Spacer(1, 30))
-            story.append(Paragraph(options.footer_text, caption_style))
-
-        # Build PDF
-        doc.build(story)
-
-        return output_path
-
-    def _process_visualization(
-        self,
-        visualization: Visualization,
-        chart_images: Optional[Dict[str, bytes]],
-        styles: Any,
-        caption_style: Any,
-        comment_style: Any,
-        options: ExportOptions,
-    ) -> List[Any]:
-        """Process a single visualization into PDF elements."""
-        from reportlab.platypus import Paragraph, Spacer, Image, Table, TableStyle
-        from reportlab.lib import colors
-        from reportlab.lib.units import inch, mm
-
-        elements = []
-
-        if not visualization.config:
-            return elements
-
-        config = visualization.config
-
-        # Handle different visualization types
-        if config.visualization_type == VisualizationType.TABLE:
-            elements.extend(self._process_table(visualization, styles, caption_style))
-        else:
-            # Handle chart types
-            elements.extend(
-                self._process_chart(visualization, chart_images, caption_style, options)
-            )
-
-        # Add comment if enabled
-        if options.include_comments and visualization.comment:
-            elements.append(Paragraph(visualization.comment, comment_style))
-            elements.append(Spacer(1, 10))
-
-        return elements
-
-    def _process_table(
-        self, visualization: Visualization, styles: Any, caption_style: Any
-    ) -> List[Any]:
-        """Process a table visualization."""
-        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib import colors
-
-        elements = []
-
-        if not visualization.data_snapshot:
-            return elements
-
-        data = visualization.data_snapshot.get("data", [])
-        columns = visualization.data_snapshot.get("columns", [])
-
-        if not data or not columns:
-            return elements
-
-        # Build table data
-        table_data = [columns]  # Header row
-
-        # Limit rows for PDF
-        max_rows = 50
-        for row in data[:max_rows]:
-            row_values = [str(row.get(col, ""))[:30] for col in columns]
-            table_data.append(row_values)
-
-        from reportlab.lib.units import inch
-
-        # Create table
-        col_widths = [1.5 * inch] * len(columns)
-        table = Table(table_data, colWidths=col_widths)
-
-        # Style the table
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                    ("TEXTCOLOR", (0, 1), (-1, -1), colors.black),
-                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                    ("FONTSIZE", (0, 1), (-1, -1), 9),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#bdc3c7")),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.white, colors.HexColor("#ecf0f1")],
-                    ),
-                ]
-            )
-        )
-
-        elements.append(table)
-
-        # Add caption
-        if visualization.config.title:
-            elements.append(Paragraph(visualization.config.title, caption_style))
-
-        elements.append(Spacer(1, 15))
-
-        return elements
-
-    def _process_chart(
-        self,
-        visualization: Visualization,
-        chart_images: Optional[Dict[str, bytes]],
-        caption_style: Any,
-        options: ExportOptions,
-    ) -> List[Any]:
-        """Process a chart visualization."""
-        from reportlab.platypus import Paragraph, Spacer, Image
-        from reportlab.lib.units import inch
-
-        elements = []
-
-        if not chart_images or visualization.id not in chart_images:
-            elements.append(Paragraph("[Chart placeholder]", caption_style))
-            return elements
-
-        # Get image bytes
-        img_bytes = chart_images[visualization.id]
-
-        # Create image from bytes
-        img_buffer = io.BytesIO(img_bytes)
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
         try:
-            # Determine image size
-            max_width = 6 * inch
-            max_height = 4 * inch
+            # Get paper size
+            paper_size = self.PAPER_SIZES.get(options.paper_size.lower(), A4)
 
-            img = Image(
-                img_buffer, width=max_width, height=max_height, kind="proportional"
+            # Create document
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=paper_size,
+                leftMargin=options.margin_mm * mm,
+                rightMargin=options.margin_mm * mm,
+                topMargin=options.margin_mm * mm,
+                bottomMargin=options.margin_mm * mm,
             )
 
-            elements.append(img)
+            # Build content
+            story = []
 
-            # Add caption
-            if visualization.config and visualization.config.title:
-                elements.append(Paragraph(visualization.config.title, caption_style))
+            # Add title page if requested
+            if options.title_page:
+                story.extend(self._create_title_page(analysis, options))
+                story.append(PageBreak())
 
-            elements.append(Spacer(1, 15))
+            # Add header text if provided
+            if options.header_text:
+                story.append(Paragraph(options.header_text, self.styles["CustomBody"]))
+                story.append(Spacer(1, 10))
+
+            # Add slides
+            for slide_idx, slide in enumerate(analysis.slides):
+                slide_content = self._create_slide_content(
+                    slide, slide_idx + 1, options, chart_images
+                )
+                story.extend(slide_content)
+
+                # Add page break between slides (except last)
+                if slide_idx < len(analysis.slides) - 1:
+                    story.append(PageBreak())
+
+            # Add footer text if provided
+            if options.footer_text:
+                story.append(Spacer(1, 20))
+                story.append(Paragraph(options.footer_text, self.styles["CustomBody"]))
+
+            # Build PDF
+            doc.build(story)
+
+            logger.info(f"PDF generated successfully: {output_path}")
+            return output_path
 
         except Exception as e:
-            elements.append(Paragraph(f"[Image error: {str(e)}]", caption_style))
+            logger.error(f"Error generating PDF: {e}")
+            return None
 
-        return elements
+    def _create_title_page(self, analysis: Analysis, options: ExportOptions) -> List[Any]:
+        """Create title page content."""
+        content = []
 
-    def merge_pdfs(self, pdf_paths: List[str], output_path: str) -> str:
-        """Merge multiple PDFs into one."""
-        from PyPDF2 import PdfMerger
+        # Add spacer for vertical centering
+        content.append(Spacer(1, 100))
 
-        merger = PdfMerger()
+        # Title
+        content.append(Paragraph(analysis.name, self.styles["CustomTitle"]))
 
-        for path in pdf_paths:
-            if os.path.exists(path):
-                merger.append(path)
+        # Subtitle with timestamp
+        if options.include_timestamp:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            content.append(
+                Paragraph(
+                    f"Generated on {timestamp}",
+                    self.styles["CustomBody"],
+                )
+            )
 
-        merger.write(output_path)
-        merger.close()
+        # Data info
+        if analysis.data_schema:
+            schema = analysis.data_schema
+            content.append(Spacer(1, 20))
+            content.append(
+                Paragraph(
+                    f"Data: {schema.file_name}",
+                    self.styles["CustomBody"],
+                )
+            )
+            content.append(
+                Paragraph(
+                    f"Rows: {schema.row_count:,} | Columns: {len(schema.columns)}",
+                    self.styles["CustomBody"],
+                )
+            )
 
-        return output_path
+        return content
+
+    def _create_slide_content(
+        self,
+        slide: Slide,
+        slide_number: int,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> List[Any]:
+        """Create content for a single slide."""
+        content = []
+
+        # Slide title
+        content.append(
+            Paragraph(
+                f"{slide_number}. {slide.title}",
+                self.styles["CustomHeading"],
+            )
+        )
+
+        # Add visualizations
+        for viz in slide.visualizations:
+            viz_content = self._create_visualization_content(viz, options, chart_images)
+            content.extend(viz_content)
+
+        return content
+
+    def _create_visualization_content(
+        self,
+        viz: Visualization,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> List[Any]:
+        """Create content for a single visualization."""
+        content = []
+
+        if not viz.config:
+            return content
+
+        # Visualization title
+        if viz.config.title:
+            content.append(
+                Paragraph(
+                    viz.config.title,
+                    self.styles["CustomHeading"],
+                )
+            )
+
+        # Add chart image if available
+        if viz.id in chart_images:
+            try:
+                img_data = chart_images[viz.id]
+                img = Image(io.BytesIO(img_data), width=150 * mm, height=100 * mm)
+                content.append(img)
+                content.append(Spacer(1, 10))
+            except Exception as e:
+                logger.warning(f"Could not add chart image: {e}")
+
+        # Add comment if present and enabled
+        if viz.comment and options.include_comments:
+            content.append(Paragraph(f"Comment: {viz.comment}", self.styles["Comment"]))
+
+        return content
+
+    def create_table_from_data(
+        self,
+        headers: List[str],
+        data: List[List[Any]],
+        style_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Table]:
+        """
+        Create a formatted table for PDF.
+
+        Args:
+            headers: Column headers
+            data: Table data as list of rows
+            style_options: Optional styling options
+
+        Returns:
+            Formatted Table object
+        """
+        if not HAS_REPORTLAB:
+            return None
+
+        # Combine headers and data
+        table_data = [headers] + data
+
+        # Create table
+        table = Table(table_data, repeatRows=1)
+
+        # Default style
+        default_style = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#10B981")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), ["#FFFFFF", "#F8FAFC"]),
+        ]
+
+        # Apply custom styles if provided
+        if style_options:
+            default_style.extend(style_options.get("extra_styles", []))
+
+        table.setStyle(TableStyle(default_style))
+
+        return table

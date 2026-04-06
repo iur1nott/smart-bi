@@ -2,7 +2,7 @@
 Login Page - Authentication UI for user login and registration.
 """
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 import streamlit as st
 
 from domain.entities import User, UserSession
@@ -42,12 +42,6 @@ def render_login_page(
             }
             .login-header p {
                 color: #64748B;
-            }
-            .stButton > button[kind="primary"] {
-                width: 100%;
-                padding: 12px;
-                font-size: 16px;
-                font-weight: 600;
             }
         </style>
         """,
@@ -97,9 +91,7 @@ def render_login_form(
 
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-    if st.button(
-        "Entrar", type="primary", key="login_submit", use_container_width=True
-    ):
+    if st.button("Entrar", type="primary", key="login_submit", use_container_width=True):
         if not username or not password:
             st.error("Por favor, preencha todos os campos")
             return
@@ -151,9 +143,7 @@ def render_register_form(
 
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-    if st.button(
-        "Criar Conta", type="primary", key="register_submit", use_container_width=True
-    ):
+    if st.button("Criar Conta", type="primary", key="register_submit", use_container_width=True):
         if not all([username, email, password, confirm_password]):
             st.error("Por favor, preencha todos os campos obrigatórios")
             return

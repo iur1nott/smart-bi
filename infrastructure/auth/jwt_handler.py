@@ -1,18 +1,16 @@
 """
-JWT Handler - JWT token generation and validation with password hashing.
-Provides secure authentication using industry-standard algorithms.
+JWT Handler - Handles JWT token creation, validation, and refresh.
+Implements secure token management for authentication.
 """
 
-from dataclasses import dataclass
 from typing import Optional, Dict, Any
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-import hashlib
 import secrets
-import hmac
-import base64
-import json
-import os
+import hashlib
+import jwt
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,117 +18,53 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AuthToken:
     """
-    Value object representing an authentication token.
-    Contains the token string and metadata.
+    Value object representing an authentication token pair.
+    Contains both access and refresh tokens.
     """
 
     access_token: str
-    token_type: str = "bearer"
-    expires_in: int = 3600  # 1 hour
-    refresh_token: Optional[str] = None
+    refresh_token: str
+    token_type: str = "Bearer"
+    expires_in: int = 3600  # 1 hour in seconds
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize token to dictionary."""
+        """Serialize to dictionary."""
         return {
             "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
             "token_type": self.token_type,
             "expires_in": self.expires_in,
-            "refresh_token": self.refresh_token,
         }
-
-
-class PasswordHandler:
-    """
-    Handles secure password hashing and verification.
-    Uses PBKDF2 with SHA-256 for password hashing.
-    """
-
-    ITERATIONS = 100000
-    SALT_LENGTH = 32
-    HASH_LENGTH = 64
-
-    @classmethod
-    def hash_password(cls, password: str) -> str:
-        """
-        Hash a password using PBKDF2-SHA256.
-
-        Args:
-            password: Plain text password
-
-        Returns:
-            Hashed password string (format: iterations$salt$hash)
-        """
-        salt = secrets.token_bytes(cls.SALT_LENGTH)
-        key = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            cls.ITERATIONS,
-            dklen=cls.HASH_LENGTH,
-        )
-        # Format: iterations$salt$hash (all hex encoded)
-        return f"{cls.ITERATIONS}${salt.hex()}${key.hex()}"
-
-    @classmethod
-    def verify_password(cls, password: str, hashed: str) -> bool:
-        """
-        Verify a password against a stored hash.
-
-        Args:
-            password: Plain text password to verify
-            hashed: Stored password hash
-
-        Returns:
-            True if password matches, False otherwise
-        """
-        try:
-            parts = hashed.split("$")
-            if len(parts) != 3:
-                logger.warning("Invalid hash format")
-                return False
-
-            iterations = int(parts[0])
-            salt = bytes.fromhex(parts[1])
-            stored_key = bytes.fromhex(parts[2])
-
-            # Compute hash with same parameters
-            computed_key = hashlib.pbkdf2_hmac(
-                "sha256",
-                password.encode("utf-8"),
-                salt,
-                iterations,
-                dklen=len(stored_key),
-            )
-
-            # Use constant-time comparison
-            return hmac.compare_digest(computed_key, stored_key)
-
-        except (ValueError, TypeError) as e:
-            logger.error(f"Error verifying password: {e}")
-            return False
 
 
 class JWTHandler:
     """
-    Handles JWT token generation and validation.
-    Implements a simple JWT implementation without external dependencies.
+    Handles JWT token operations following security best practices.
+    Implements access/refresh token pattern with token rotation.
     """
 
-    ACCESS_TOKEN_EXPIRY_HOURS = 1
-    REFRESH_TOKEN_EXPIRY_DAYS = 7
-
-    def __init__(self, secret_key: Optional[str] = None):
+    def __init__(
+        self,
+        secret_key: Optional[str] = None,
+        algorithm: str = "HS256",
+        access_token_expire_minutes: int = 60,
+        refresh_token_expire_days: int = 7,
+    ):
         """
         Initialize the JWT handler.
 
         Args:
-            secret_key: Secret key for signing tokens. If not provided,
-                       uses environment variable JWT_SECRET_KEY or generates one.
+            secret_key: Secret key for signing tokens. Uses JWT_SECRET_KEY env var if not provided.
+            algorithm: JWT signing algorithm
+            access_token_expire_minutes: Access token expiration time in minutes
+            refresh_token_expire_days: Refresh token expiration time in days
         """
         self.secret_key = secret_key or os.getenv(
-            "JWT_SECRET_KEY", secrets.token_urlsafe(64)
+            "JWT_SECRET_KEY", "your-super-secret-key-change-in-production"
         )
-        self.algorithm = "HS256"
+        self.algorithm = algorithm
+        self.access_token_expire_minutes = access_token_expire_minutes
+        self.refresh_token_expire_days = refresh_token_expire_days
 
     def create_access_token(
         self,
@@ -139,102 +73,106 @@ class JWTHandler:
         additional_claims: Optional[Dict[str, Any]] = None,
     ) -> AuthToken:
         """
-        Create a new access token for a user.
+        Create a new access token and refresh token pair.
 
         Args:
-            user_id: The user's unique identifier
-            username: The user's username
-            additional_claims: Optional additional claims to include
+            user_id: The unique identifier of the user
+            username: The username of the user
+            additional_claims: Optional additional claims to include in the token
 
         Returns:
-            AuthToken with the generated token
+            AuthToken object with access and refresh tokens
         """
         now = datetime.utcnow()
-        expiry = now + timedelta(hours=self.ACCESS_TOKEN_EXPIRY_HOURS)
 
-        payload = {
+        # Create access token
+        access_payload = {
             "sub": user_id,
             "username": username,
-            "iat": int(now.timestamp()),
-            "exp": int(expiry.timestamp()),
             "type": "access",
+            "iat": now,
+            "exp": now + timedelta(minutes=self.access_token_expire_minutes),
+            "jti": secrets.token_urlsafe(16),  # Unique token ID
         }
 
         if additional_claims:
-            payload.update(additional_claims)
+            access_payload.update(additional_claims)
 
-        token = self._encode(payload)
+        access_token = jwt.encode(access_payload, self.secret_key, algorithm=self.algorithm)
 
-        refresh_token = self._create_refresh_token(user_id)
-
-        return AuthToken(
-            access_token=token,
-            expires_in=self.ACCESS_TOKEN_EXPIRY_HOURS * 3600,
-            refresh_token=refresh_token,
-        )
-
-    def _create_refresh_token(self, user_id: str) -> str:
-        """
-        Create a refresh token for a user.
-
-        Args:
-            user_id: The user's unique identifier
-
-        Returns:
-            Refresh token string
-        """
-        now = datetime.utcnow()
-        expiry = now + timedelta(days=self.REFRESH_TOKEN_EXPIRY_DAYS)
-
-        payload = {
+        # Create refresh token
+        refresh_payload = {
             "sub": user_id,
-            "iat": int(now.timestamp()),
-            "exp": int(expiry.timestamp()),
             "type": "refresh",
+            "iat": now,
+            "exp": now + timedelta(days=self.refresh_token_expire_days),
+            "jti": secrets.token_urlsafe(16),
         }
 
-        return self._encode(payload)
+        refresh_token = jwt.encode(refresh_payload, self.secret_key, algorithm=self.algorithm)
+
+        return AuthToken(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=self.access_token_expire_minutes * 60,
+        )
 
     def validate_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
         Validate a JWT token and return its payload.
 
         Args:
-            token: JWT token string
+            token: The JWT token to validate
 
         Returns:
             Token payload if valid, None otherwise
         """
         try:
-            payload = self._decode(token)
+            payload = jwt.decode(
+                token,
+                self.secret_key,
+                algorithms=[self.algorithm],
+                options={"require": ["sub", "exp", "iat"]},
+            )
 
-            # Check expiration
-            exp = payload.get("exp")
-            if exp and datetime.utcnow().timestamp() > exp:
+            # Check if token is expired
+            if datetime.utcnow() > datetime.fromtimestamp(payload["exp"]):
                 logger.debug("Token has expired")
                 return None
 
             return payload
 
+        except jwt.ExpiredSignatureError:
+            logger.debug("Token has expired")
+            return None
+        except jwt.InvalidTokenError as e:
+            logger.debug(f"Invalid token: {e}")
+            return None
         except Exception as e:
-            logger.debug(f"Token validation failed: {e}")
+            logger.error(f"Error validating token: {e}")
             return None
 
     def refresh_access_token(self, refresh_token: str) -> Optional[AuthToken]:
         """
-        Create a new access token using a refresh token.
+        Create a new access token using a valid refresh token.
 
         Args:
-            refresh_token: Valid refresh token
+            refresh_token: The refresh token to use
 
         Returns:
             New AuthToken if refresh token is valid, None otherwise
         """
         payload = self.validate_token(refresh_token)
 
-        if not payload or payload.get("type") != "refresh":
+        if not payload:
             return None
 
+        # Verify this is a refresh token
+        if payload.get("type") != "refresh":
+            logger.warning("Attempted to refresh with non-refresh token")
+            return None
+
+        # Create new token pair
         user_id = payload.get("sub")
         if not user_id:
             return None
@@ -244,100 +182,52 @@ class JWTHandler:
             username=payload.get("username", ""),
         )
 
-    def revoke_token(self, token: str) -> bool:
+    def get_token_hash(self, token: str) -> str:
         """
-        Mark a token as revoked (for future invalidation).
-        In a production system, this would store revoked tokens in a database.
+        Generate a hash of the token for storage.
 
         Args:
-            token: Token to revoke
+            token: The token to hash
 
         Returns:
-            True if successful
+            SHA-256 hash of the token
         """
-        # In a full implementation, store the token in a revocation list
-        # For now, we rely on expiration
-        return True
+        return hashlib.sha256(token.encode()).hexdigest()
 
-    def _encode(self, payload: Dict[str, Any]) -> str:
+    def extract_user_id(self, token: str) -> Optional[str]:
         """
-        Encode a payload into a JWT token.
+        Extract user ID from a token without full validation.
+
+        Useful for logging and quick identification.
 
         Args:
-            payload: Data to encode
+            token: The JWT token
 
         Returns:
-            JWT token string
+            User ID if present in token, None otherwise
         """
-        # Create header
-        header = {"alg": self.algorithm, "typ": "JWT"}
-        header_b64 = self._base64_encode(json.dumps(header))
-        payload_b64 = self._base64_encode(json.dumps(payload))
+        try:
+            # Decode without verification (for ID extraction only)
+            payload = jwt.decode(
+                token,
+                options={"verify_signature": False},
+            )
+            return payload.get("sub")
+        except Exception:
+            return None
 
-        # Create signature
-        message = f"{header_b64}.{payload_b64}"
-        signature = self._sign(message)
-
-        return f"{message}.{signature}"
-
-    def _decode(self, token: str) -> Dict[str, Any]:
+    def decode_token_unsafe(self, token: str) -> Optional[Dict[str, Any]]:
         """
-        Decode and verify a JWT token.
+        Decode a token without verification.
+        WARNING: Only use for debugging or logging, never for authentication!
 
         Args:
-            token: JWT token string
+            token: The JWT token
 
         Returns:
-            Decoded payload
-
-        Raises:
-            ValueError: If token is invalid or signature doesn't match
+            Token payload without verification
         """
-        parts = token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Invalid token format")
-
-        header_b64, payload_b64, signature = parts
-
-        # Verify signature
-        message = f"{header_b64}.{payload_b64}"
-        expected_signature = self._sign(message)
-
-        if not hmac.compare_digest(signature, expected_signature):
-            raise ValueError("Invalid signature")
-
-        # Decode payload
-        payload_json = self._base64_decode(payload_b64)
-        return json.loads(payload_json)
-
-    def _sign(self, message: str) -> str:
-        """
-        Sign a message using HMAC-SHA256.
-
-        Args:
-            message: Message to sign
-
-        Returns:
-            Base64-encoded signature
-        """
-        signature = hmac.new(
-            self.secret_key.encode(), message.encode(), hashlib.sha256
-        ).digest()
-        return self._base64_encode_bytes(signature)
-
-    def _base64_encode(self, data: str) -> str:
-        """Encode string data to base64url."""
-        return self._base64_encode_bytes(data.encode())
-
-    def _base64_encode_bytes(self, data: bytes) -> str:
-        """Encode bytes to base64url."""
-        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-    def _base64_decode(self, data: str) -> str:
-        """Decode base64url to string."""
-        # Add padding if needed
-        padding = 4 - len(data) % 4
-        if padding != 4:
-            data += "=" * padding
-
-        return base64.urlsafe_b64decode(data).decode()
+        try:
+            return jwt.decode(token, options={"verify_signature": False})
+        except Exception:
+            return None

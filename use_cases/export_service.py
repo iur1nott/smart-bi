@@ -1,239 +1,314 @@
 """
-Export Service - Handles export operations to LaTeX and PDF.
-Implements the export pipeline: Data -> LaTeX -> PDF.
+Export Service - Handles export of analyses to various formats.
+Supports PDF, LaTeX, and HTML export with chart embedding.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
-import tempfile
-import subprocess
-import base64
-from pathlib import Path
 from datetime import datetime
 import logging
 
 from domain.entities import Analysis, Slide, Visualization, VisualizationType
 from domain.value_objects import ExportOptions
+from infrastructure.pdf_generator import PDFGenerator
 
 logger = logging.getLogger(__name__)
 
 
-class LaTeXTemplateEngine:
+class ExportService:
     """
-    Template engine for generating LaTeX documents.
-    Handles the conversion of slides and visualizations to LaTeX code.
+    Service responsible for exporting analyses to various formats.
+    Supports PDF, HTML, and LaTeX formats.
     """
 
-    DOCUMENT_TEMPLATE = r"""
-\documentclass[{paper_size}{orientation}]{{article}}
-\usepackage[utf8]{{inputenc}}
-\usepackage[T1]{{fontenc}}
-\usepackage{{graphicx}}
-\usepackage{{booktabs}}
-\usepackage{{longtable}}
-\usepackage{{geometry}}
-\usepackage{{xcolor}}
-\usepackage{{tikz}}
-\usepackage{{pgfplots}}
-\usepackage{{float}}
-\usepackage{{caption}}
-\usepackage{{hyperref}}
-\pgfplotsset{{compat=1.18}}
-
-\geometry{{margin={margin_mm}mm}}
-
-{extra_packages}
-
-\begin{{document}}
-
-{header}
-
-{content}
-
-{footer}
-
-\end{{document}}
-"""
-
-    SLIDE_TEMPLATE = r"""
-\section*{{{title}}}
-
-{content}
-
-{comment}
-
-\newpage
-"""
-
-    CHART_TEMPLATE = r"""
-\begin{{figure}}[H]
-\centering
-{chart_content}
-\caption{{{title}}}
-\end{{figure}}
-"""
-
-    TABLE_TEMPLATE = r"""
-\begin{{table}}[H]
-\centering
-\caption{{{title}}}
-{table_content}
-\end{{table}}
-"""
-
-    def __init__(self):
-        """Initialize the template engine with color palette."""
-        self.color_palette = {
-            "primary": "#10B981",
-            "secondary": "#3B82F6",
-            "accent": "#F59E0B",
-        }
-
-    def generate_document(
-        self, analysis: Analysis, options: ExportOptions, image_paths: Dict[str, str]
-    ) -> str:
+    def __init__(self, export_dir: str = "exports"):
         """
-        Generate a complete LaTeX document for an analysis.
+        Initialize the export service.
+
+        Args:
+            export_dir: Directory to store exported files
+        """
+        self.export_dir = export_dir
+        self.pdf_generator = PDFGenerator()
+        os.makedirs(export_dir, exist_ok=True)
+
+    def export_to_pdf(
+        self,
+        analysis: Analysis,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> Optional[str]:
+        """
+        Export an analysis to PDF format.
 
         Args:
             analysis: The analysis to export
-            options: Export options
-            image_paths: Dictionary mapping visualization IDs to image paths
+            options: Export configuration options
+            chart_images: Dictionary mapping visualization IDs to chart images
 
         Returns:
-            Complete LaTeX document as string
+            Path to the generated PDF file, or None on failure
         """
-        paper_size = options.paper_size + "paper"
-        orientation = "" if options.orientation == "portrait" else ",landscape"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = self._sanitize_filename(f"{analysis.name}_{timestamp}.pdf")
+        output_path = os.path.join(self.export_dir, filename)
 
-        content_parts = []
-        for slide in analysis.slides:
-            slide_content = self._generate_slide_content(slide, image_paths, options)
-            content_parts.append(slide_content)
+        return self.pdf_generator.generate_pdf(analysis, options, chart_images, output_path)
 
-        header = ""
-        if options.header_text:
-            header = f"\\textbf{{{self._escape_latex(options.header_text)}}}\n\\vspace{{1em}}\n\n"
+    def export_to_html(
+        self,
+        analysis: Analysis,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> Optional[str]:
+        """
+        Export an analysis to HTML format.
 
-        footer = ""
-        if options.footer_text:
-            footer = f"\\vfill\n\\textit{{{self._escape_latex(options.footer_text)}}}\n"
-        if options.include_page_numbers:
-            footer += "\\pagenumbering{arabic}\n"
+        Args:
+            analysis: The analysis to export
+            options: Export configuration options
+            chart_images: Dictionary mapping visualization IDs to chart images
 
-        if options.title_page:
-            title_content = self._generate_title_page(analysis, options)
-            content_parts.insert(0, title_content)
+        Returns:
+            Path to the generated HTML file, or None on failure
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = self._sanitize_filename(f"{analysis.name}_{timestamp}.html")
+        output_path = os.path.join(self.export_dir, filename)
 
-        document = self.DOCUMENT_TEMPLATE.format(
-            paper_size=paper_size,
-            orientation=orientation,
-            margin_mm=options.margin_mm,
-            extra_packages="",
-            header=header,
-            content="\n".join(content_parts),
-            footer=footer,
-        )
+        try:
+            html_content = self._generate_html_content(analysis, options, chart_images)
 
-        return document
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
 
-    def _generate_title_page(self, analysis: Analysis, options: ExportOptions) -> str:
-        """Generate a title page for the document."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        return f"""
-\\begin{{titlepage}}
-\\centering
-\\vspace*{{2cm}}
-\\Huge\\textbf{{{self._escape_latex(analysis.name)}}}
-\\vspace{{2cm}}
+            logger.info(f"HTML export created: {output_path}")
+            return output_path
 
-\\Large Data Analysis Report
-\\vspace{{1cm}}
+        except Exception as e:
+            logger.error(f"Error exporting to HTML: {e}")
+            return None
 
-\\normalsize Generated: {timestamp}
-\\end{{titlepage}}
+    def export_to_latex(
+        self,
+        analysis: Analysis,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> Optional[str]:
+        """
+        Export an analysis to LaTeX format.
 
-\\newpage
-"""
+        Args:
+            analysis: The analysis to export
+            options: Export configuration options
+            chart_images: Dictionary mapping visualization IDs to chart images
 
-    def _generate_slide_content(
-        self, slide: Slide, image_paths: Dict[str, str], options: ExportOptions
+        Returns:
+            Path to the generated LaTeX file, or None on failure
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = self._sanitize_filename(f"{analysis.name}_{timestamp}.tex")
+        output_path = os.path.join(self.export_dir, filename)
+
+        try:
+            latex_content = self._generate_latex_content(analysis, options, chart_images)
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(latex_content)
+
+            logger.info(f"LaTeX export created: {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Error exporting to LaTeX: {e}")
+            return None
+
+    def _generate_html_content(
+        self,
+        analysis: Analysis,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
     ) -> str:
-        """Generate LaTeX content for a single slide."""
-        content_parts = []
+        """Generate HTML content for an analysis."""
+        import base64
+
+        html_parts = [
+            "<!DOCTYPE html>",
+            "<html lang='en'>",
+            "<head>",
+            f"<title>{self._escape_html(analysis.name)}</title>",
+            "<meta charset='UTF-8'>",
+            "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",
+            "<style>",
+            self._get_html_styles(),
+            "</style>",
+            "</head>",
+            "<body>",
+        ]
+
+        # Title
+        html_parts.append(f"<h1>{self._escape_html(analysis.name)}</h1>")
+
+        # Header text
+        if options.header_text:
+            html_parts.append(f"<p class='header'>{self._escape_html(options.header_text)}</p>")
+
+        # Metadata
+        if analysis.data_schema:
+            schema = analysis.data_schema
+            html_parts.append(
+                f"<p class='meta'>Data: {self._escape_html(schema.file_name)} | "
+                f"Rows: {schema.row_count:,} | Columns: {len(schema.columns)}</p>"
+            )
+
+        # Timestamp
+        if options.include_timestamp:
+            html_parts.append(
+                f"<p class='meta'>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>"
+            )
+
+        # Slides
+        for i, slide in enumerate(analysis.slides):
+            html_parts.extend(self._generate_slide_html(slide, i + 1, options, chart_images))
+
+        # Footer
+        if options.footer_text:
+            html_parts.append(f"<p class='footer'>{self._escape_html(options.footer_text)}</p>")
+
+        html_parts.extend(["</body>", "</html>"])
+
+        return "\n".join(html_parts)
+
+    def _generate_slide_html(
+        self,
+        slide: Slide,
+        slide_number: int,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> List[str]:
+        """Generate HTML for a single slide."""
+        import base64
+
+        parts = [
+            "<div class='slide'>",
+            f"<h2>{slide_number}. {self._escape_html(slide.title)}</h2>",
+        ]
 
         for viz in slide.visualizations:
-            if viz.config:
-                if viz.config.visualization_type == VisualizationType.TABLE:
-                    content = self._generate_table_latex(viz)
-                else:
-                    content = self._generate_chart_latex(viz, image_paths.get(viz.id))
+            # Title
+            if viz.config and viz.config.title:
+                parts.append(f"<h3>{self._escape_html(viz.config.title)}</h3>")
 
-                if content:
-                    content_parts.append(content)
+            # Chart image
+            if viz.id in chart_images:
+                img_base64 = base64.b64encode(chart_images[viz.id]).decode()
+                parts.append(
+                    f"<img src='data:image/png;base64,{img_base64}' alt='Chart' class='chart'>"
+                )
 
-                if options.include_comments and viz.comment:
-                    content_parts.append(
-                        f"\\textit{{{self._escape_latex(viz.comment)}}}\n\\vspace{{1em}}\n"
-                    )
+            # Comment
+            if viz.comment and options.include_comments:
+                parts.append(f"<p class='comment'>{self._escape_html(viz.comment)}</p>")
 
-        return self.SLIDE_TEMPLATE.format(
-            title=self._escape_latex(slide.title),
-            content="\n".join(content_parts),
-            comment="",
-        )
+        parts.append("</div>")
+        return parts
 
-    def _generate_chart_latex(
-        self, visualization: Visualization, image_path: Optional[str] = None
+    def _get_html_styles(self) -> str:
+        """Get CSS styles for HTML export."""
+        return """
+            body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f8fafc; }
+            h1 { color: #10B981; text-align: center; border-bottom: 2px solid #10B981; padding-bottom: 10px; }
+            h2 { color: #1E293B; border-left: 4px solid #10B981; padding-left: 10px; margin-top: 30px; }
+            h3 { color: #334155; }
+            .slide { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .chart { max-width: 100%; height: auto; border-radius: 8px; margin: 15px 0; }
+            .comment { font-style: italic; color: #64748B; background: #F8FAFC; padding: 10px; border-radius: 4px; border-left: 3px solid #CBD5E1; }
+            .meta { color: #64748B; font-size: 14px; text-align: center; }
+            .header { color: #475569; font-size: 16px; }
+            .footer { color: #94A3B8; font-size: 14px; text-align: center; margin-top: 40px; }
+        """
+
+    def _generate_latex_content(
+        self,
+        analysis: Analysis,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
     ) -> str:
-        """Generate LaTeX for a chart visualization."""
-        if not visualization.config:
-            return ""
+        """Generate LaTeX content for an analysis."""
+        latex_parts = [
+            "\\documentclass{article}",
+            "\\usepackage[utf8]{inputenc}",
+            "\\usepackage{graphicx}",
+            "\\usepackage{geometry}",
+            "\\geometry{a4paper, margin=20mm}",
+            "\\title{" + self._escape_latex(analysis.name) + "}",
+            "\\date{" + datetime.now().strftime("%Y-%m-%d") + "}",
+            "\\begin{document}",
+            "\\maketitle",
+        ]
 
-        title = self._escape_latex(visualization.config.title or "Chart")
+        # Header text
+        if options.header_text:
+            latex_parts.append("\\section*{" + self._escape_latex(options.header_text) + "}")
 
-        if image_path:
-            chart_content = f"\\includegraphics[width=0.9\\textwidth]{{{image_path}}}"
-        else:
-            chart_content = "% Chart placeholder - image not available"
+        # Slides
+        for i, slide in enumerate(analysis.slides):
+            latex_parts.extend(self._generate_slide_latex(slide, i + 1, options, chart_images))
 
-        return self.CHART_TEMPLATE.format(chart_content=chart_content, title=title)
+        # Footer
+        if options.footer_text:
+            latex_parts.append("\\vspace{1cm}")
+            latex_parts.append("\\textit{" + self._escape_latex(options.footer_text) + "}")
 
-    def _generate_table_latex(self, visualization: Visualization) -> str:
-        """Generate LaTeX for a table visualization."""
-        if not visualization.config or not visualization.data_snapshot:
-            return ""
+        latex_parts.append("\\end{document}")
 
-        data = visualization.data_snapshot.get("data", [])
-        columns = visualization.data_snapshot.get("columns", [])
+        return "\n".join(latex_parts)
 
-        if not data or not columns:
-            return ""
+    def _generate_slide_latex(
+        self,
+        slide: Slide,
+        slide_number: int,
+        options: ExportOptions,
+        chart_images: Dict[str, bytes],
+    ) -> List[str]:
+        """Generate LaTeX for a single slide."""
+        parts = [
+            "\\section{" + f"{slide_number}. " + self._escape_latex(slide.title) + "}",
+        ]
 
-        title = self._escape_latex(visualization.config.title or "Table")
+        for viz in slide.visualizations:
+            if viz.config and viz.config.title:
+                parts.append("\\subsection{" + self._escape_latex(viz.config.title) + "}")
 
-        num_cols = len(columns)
-        col_spec = "|" + "|".join(["l"] * num_cols) + "|"
+            # Note: Chart images would need to be saved to files for LaTeX
+            # This is a simplified version
 
-        header_row = " & ".join([self._escape_latex(str(col)) for col in columns]) + " \\\\\\hline"
+            if viz.comment and options.include_comments:
+                parts.append("\\textit{" + self._escape_latex(viz.comment) + "}")
 
-        data_rows = []
-        for row in data[:100]:
-            row_values = [self._escape_latex(str(row.get(col, "")))[:50] for col in columns]
-            data_rows.append(" & ".join(row_values) + " \\\\\\hline")
+        return parts
 
-        table_content = (
-            f"\\begin{{tabular}}{{{col_spec}}}\n\\hline\n{header_row}\n"
-            + "\n".join(data_rows)
-            + "\n\\end{tabular}"
-        )
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitize a filename for safe filesystem use."""
+        # Replace spaces and special characters
+        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+        return safe
 
-        return self.TABLE_TEMPLATE.format(title=title, table_content=table_content)
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML special characters."""
+        replacements = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
 
     def _escape_latex(self, text: str) -> str:
-        """Escape special LaTeX characters."""
-        if not text:
-            return ""
+        """Escape LaTeX special characters."""
         replacements = {
             "&": r"\&",
             "%": r"\%",
@@ -246,352 +321,6 @@ class LaTeXTemplateEngine:
             "^": r"\^{}",
             "\\": r"\textbackslash{}",
         }
-        for char, replacement in replacements.items():
-            text = text.replace(char, replacement)
+        for old, new in replacements.items():
+            text = text.replace(old, new)
         return text
-
-
-class PDFCompiler:
-    """
-    Handles LaTeX to PDF compilation.
-    Supports multiple compilation methods for maximum compatibility.
-    """
-
-    @staticmethod
-    def compile_latex(tex_path: str, working_dir: str) -> Optional[str]:
-        """
-        Compile LaTeX file to PDF using pdflatex.
-
-        Args:
-            tex_path: Path to the LaTeX file
-            working_dir: Working directory for compilation
-
-        Returns:
-            Path to the generated PDF or None if failed
-        """
-        try:
-            result = subprocess.run(
-                [
-                    "pdflatex",
-                    "-interaction=nonstopmode",
-                    "-output-directory",
-                    working_dir,
-                    tex_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            pdf_path = tex_path.replace(".tex", ".pdf")
-            if os.path.exists(pdf_path):
-                return pdf_path
-
-        except FileNotFoundError:
-            logger.info("pdflatex not found, using alternative method")
-            return PDFCompiler._alternative_pdf_generation(tex_path, working_dir)
-        except subprocess.TimeoutExpired:
-            logger.error("LaTeX compilation timed out")
-        except Exception as e:
-            logger.error(f"LaTeX compilation error: {e}")
-
-        return None
-
-    @staticmethod
-    def _alternative_pdf_generation(tex_path: str, working_dir: str) -> Optional[str]:
-        """
-        Alternative PDF generation using reportlab when pdflatex is not available.
-
-        Args:
-            tex_path: Path to the LaTeX file (for reference)
-            working_dir: Working directory
-
-        Returns:
-            Path to the generated PDF or None if failed
-        """
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.platypus import (
-                SimpleDocTemplate,
-                Paragraph,
-                Spacer,
-                PageBreak,
-            )
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib.units import mm
-
-            pdf_path = tex_path.replace(".tex", ".pdf")
-            doc = SimpleDocTemplate(
-                pdf_path,
-                pagesize=A4,
-                rightMargin=20 * mm,
-                leftMargin=20 * mm,
-                topMargin=20 * mm,
-                bottomMargin=20 * mm,
-            )
-
-            styles = getSampleStyleSheet()
-            story = [
-                Paragraph("Dashboard Builder Export", styles["Title"]),
-                Spacer(1, 20),
-                Paragraph(
-                    "PDF generated using alternative method (LaTeX not available)",
-                    styles["Normal"],
-                ),
-            ]
-
-            doc.build(story)
-            return pdf_path
-
-        except ImportError:
-            logger.warning("reportlab not available for alternative PDF generation")
-        except Exception as e:
-            logger.error(f"Alternative PDF generation error: {e}")
-
-        return None
-
-
-class ExportService:
-    """
-    Service for exporting analyses to various formats.
-    Supports PDF, LaTeX, and HTML output formats.
-    """
-
-    def __init__(self, output_dir: str = "download"):
-        """Initialize the export service with output directory."""
-        self.output_dir = output_dir
-        self.template_engine = LaTeXTemplateEngine()
-        os.makedirs(output_dir, exist_ok=True)
-
-    def export_to_pdf(
-        self,
-        analysis: Analysis,
-        options: Optional[ExportOptions] = None,
-        chart_images: Optional[Dict[str, bytes]] = None,
-    ) -> str:
-        """
-        Export an analysis to PDF format.
-
-        Args:
-            analysis: The analysis to export
-            options: Export options
-            chart_images: Dictionary mapping visualization IDs to chart image bytes
-
-        Returns:
-            Path to the generated PDF file
-        """
-        if options is None:
-            options = ExportOptions(format="pdf")
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            image_paths = {}
-            if chart_images:
-                for viz_id, img_bytes in chart_images.items():
-                    img_path = os.path.join(temp_dir, f"{viz_id}.png")
-                    with open(img_path, "wb") as f:
-                        f.write(img_bytes)
-                    image_paths[viz_id] = img_path
-
-            latex_content = self.template_engine.generate_document(analysis, options, image_paths)
-
-            tex_path = os.path.join(temp_dir, "document.tex")
-            with open(tex_path, "w", encoding="utf-8") as f:
-                f.write(latex_content)
-
-            pdf_path = PDFCompiler.compile_latex(tex_path, temp_dir)
-
-            if pdf_path and os.path.exists(pdf_path):
-                output_filename = f"{analysis.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                output_path = os.path.join(self.output_dir, output_filename)
-                os.rename(pdf_path, output_path)
-                logger.info(f"Exported PDF: {output_path}")
-                return output_path
-
-        raise RuntimeError("Failed to generate PDF")
-
-    def export_to_latex(
-        self,
-        analysis: Analysis,
-        options: Optional[ExportOptions] = None,
-        chart_images: Optional[Dict[str, bytes]] = None,
-    ) -> str:
-        """
-        Export an analysis to LaTeX format.
-
-        Args:
-            analysis: The analysis to export
-            options: Export options
-            chart_images: Dictionary mapping visualization IDs to chart image bytes
-
-        Returns:
-            Path to the generated LaTeX file
-        """
-        if options is None:
-            options = ExportOptions(format="latex")
-
-        images_dir = os.path.join(self.output_dir, f"{analysis.id}_images")
-        os.makedirs(images_dir, exist_ok=True)
-
-        image_paths = {}
-        if chart_images:
-            for viz_id, img_bytes in chart_images.items():
-                img_path = os.path.join(images_dir, f"{viz_id}.png")
-                with open(img_path, "wb") as f:
-                    f.write(img_bytes)
-                image_paths[viz_id] = os.path.basename(img_path)
-
-        latex_content = self.template_engine.generate_document(analysis, options, image_paths)
-
-        output_filename = (
-            f"{analysis.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tex"
-        )
-        output_path = os.path.join(self.output_dir, output_filename)
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(latex_content)
-
-        logger.info(f"Exported LaTeX: {output_path}")
-        return output_path
-
-    def export_to_html(
-        self,
-        analysis: Analysis,
-        options: Optional[ExportOptions] = None,
-        chart_images: Optional[Dict[str, bytes]] = None,
-    ) -> str:
-        """
-        Export an analysis to HTML format.
-
-        Args:
-            analysis: The analysis to export
-            options: Export options
-            chart_images: Dictionary mapping visualization IDs to chart image bytes
-
-        Returns:
-            Path to the generated HTML file
-        """
-        if options is None:
-            options = ExportOptions(format="html")
-
-        html_content = self._generate_html(analysis, options, chart_images)
-
-        output_filename = (
-            f"{analysis.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        )
-        output_path = os.path.join(self.output_dir, output_filename)
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-
-        logger.info(f"Exported HTML: {output_path}")
-        return output_path
-
-    def _generate_html(
-        self,
-        analysis: Analysis,
-        options: ExportOptions,
-        chart_images: Optional[Dict[str, bytes]] = None,
-    ) -> str:
-        """Generate HTML content for an analysis."""
-        slides_html = []
-
-        for slide in analysis.slides:
-            visualizations_html = []
-
-            for viz in slide.visualizations:
-                viz_html = ""
-
-                if chart_images and viz.id in chart_images:
-                    img_data = base64.b64encode(chart_images[viz.id]).decode("utf-8")
-                    title = viz.config.title if viz.config else ""
-                    viz_html = f'<img src="data:image/png;base64,{img_data}" alt="{title}" style="max-width: 100%;">'
-
-                if viz.config:
-                    title = viz.config.title or ""
-                    comment_html = ""
-                    if options.include_comments and viz.comment:
-                        comment_html = f'<p class="comment">{viz.comment}</p>'
-                    viz_html = f"""
-                    <div class="visualization">
-                        <h4>{title}</h4>
-                        {viz_html}
-                        {comment_html}
-                    </div>
-                    """
-
-                visualizations_html.append(viz_html)
-
-            slide_html = f"""
-            <div class="slide">
-                <h2>{slide.title}</h2>
-                <div class="visualizations">
-                    {"".join(visualizations_html)}
-                </div>
-            </div>
-            """
-            slides_html.append(slide_html)
-
-        html = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{analysis.name}</title>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Arial, sans-serif;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8fafc;
-        }}
-        .slide {{
-            background-color: white;
-            padding: 30px;
-            margin-bottom: 30px;
-            border-radius: 12px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .visualization {{
-            margin: 20px 0;
-        }}
-        .comment {{
-            font-style: italic;
-            color: #64748b;
-            margin-top: 10px;
-            padding-left: 20px;
-            border-left: 3px solid #10b981;
-        }}
-        img {{
-            display: block;
-            margin: 0 auto;
-            max-width: 100%;
-            border-radius: 8px;
-        }}
-        h1 {{
-            color: #1e293b;
-            text-align: center;
-        }}
-        h2 {{
-            color: #10b981;
-            border-bottom: 2px solid #10b981;
-            padding-bottom: 10px;
-        }}
-        h4 {{
-            color: #475569;
-        }}
-    </style>
-</head>
-<body>
-    <h1>{analysis.name}</h1>
-    {"".join(slides_html)}
-</body>
-</html>
-        """
-
-        return html
-
-    def get_supported_formats(self) -> List[str]:
-        """Get list of supported export formats."""
-        return ["pdf", "latex", "html"]

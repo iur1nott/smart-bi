@@ -5,14 +5,12 @@ Implements the UserRepository interface using SQLAlchemy.
 
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+import logging
 
 from domain.entities import User
 from domain.repositories import UserRepository
 from infrastructure.database import Database, get_database
 from infrastructure.models import UserModel
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +43,7 @@ class UserRepositoryImpl(UserRepository):
         try:
             with self._db.session_scope() as session:
                 # Check if user exists
-                existing = (
-                    session.query(UserModel).filter(UserModel.id == user.id).first()
-                )
+                existing = session.query(UserModel).filter(UserModel.id == user.id).first()
 
                 if existing:
                     # Update existing user
@@ -118,11 +114,7 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = (
-                    session.query(UserModel)
-                    .filter(UserModel.username.ilike(username))
-                    .first()
-                )
+                model = session.query(UserModel).filter(UserModel.username.ilike(username)).first()
 
                 if model:
                     return self._model_to_entity(model)
@@ -144,11 +136,7 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = (
-                    session.query(UserModel)
-                    .filter(UserModel.email.ilike(email))
-                    .first()
-                )
+                model = session.query(UserModel).filter(UserModel.email.ilike(email)).first()
 
                 if model:
                     return self._model_to_entity(model)
@@ -158,30 +146,9 @@ class UserRepositoryImpl(UserRepository):
             logger.error(f"Error finding user by email {email}: {e}")
             return None
 
-    def delete(self, user_id: str) -> bool:
+    def find_all(self, limit: int = 100, offset: int = 0) -> List[User]:
         """
-        Delete a user from the database.
-
-        Args:
-            user_id: The unique identifier of the user to delete
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            with self._db.session_scope() as session:
-                deleted = (
-                    session.query(UserModel).filter(UserModel.id == user_id).delete()
-                )
-                return deleted > 0
-
-        except Exception as e:
-            logger.error(f"Error deleting user {user_id}: {e}")
-            return False
-
-    def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
-        """
-        List all users with pagination.
+        Find all users with pagination.
 
         Args:
             limit: Maximum number of users to return
@@ -195,83 +162,57 @@ class UserRepositoryImpl(UserRepository):
                 models = (
                     session.query(UserModel)
                     .order_by(UserModel.created_at.desc())
-                    .offset(offset)
                     .limit(limit)
+                    .offset(offset)
                     .all()
                 )
 
                 return [self._model_to_entity(m) for m in models]
 
         except Exception as e:
-            logger.error(f"Error listing users: {e}")
+            logger.error(f"Error finding all users: {e}")
             return []
 
-    def update_last_login(self, user_id: str) -> bool:
+    def delete(self, user_id: str) -> bool:
         """
-        Update the last login timestamp for a user.
+        Delete a user from the database.
 
         Args:
-            user_id: The unique identifier of the user
+            user_id: The unique identifier of the user to delete
 
         Returns:
             True if successful, False otherwise
         """
         try:
             with self._db.session_scope() as session:
-                updated = (
-                    session.query(UserModel)
-                    .filter(UserModel.id == user_id)
-                    .update({"last_login": datetime.utcnow()})
-                )
-                return updated > 0
+                model = session.query(UserModel).filter(UserModel.id == user_id).first()
+
+                if model:
+                    session.delete(model)
+                    return True
+                return False
 
         except Exception as e:
-            logger.error(f"Error updating last login for user {user_id}: {e}")
+            logger.error(f"Error deleting user {user_id}: {e}")
             return False
 
-    def search(self, query: str, limit: int = 20) -> List[User]:
+    def count(self) -> int:
         """
-        Search users by username or email.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results
+        Count the total number of users.
 
         Returns:
-            List of matching User entities
+            Total user count
         """
         try:
             with self._db.session_scope() as session:
-                search_pattern = f"%{query}%"
-                models = (
-                    session.query(UserModel)
-                    .filter(
-                        or_(
-                            UserModel.username.ilike(search_pattern),
-                            UserModel.email.ilike(search_pattern),
-                            UserModel.full_name.ilike(search_pattern),
-                        )
-                    )
-                    .limit(limit)
-                    .all()
-                )
-
-                return [self._model_to_entity(m) for m in models]
+                return session.query(UserModel).count()
 
         except Exception as e:
-            logger.error(f"Error searching users: {e}")
-            return []
+            logger.error(f"Error counting users: {e}")
+            return 0
 
     def _model_to_entity(self, model: UserModel) -> User:
-        """
-        Convert a SQLAlchemy model to a domain entity.
-
-        Args:
-            model: SQLAlchemy UserModel instance
-
-        Returns:
-            User domain entity
-        """
+        """Convert a SQLAlchemy model to a domain entity."""
         return User(
             id=str(model.id),
             username=model.username,

@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 # Global database instance
 _db_instance: Optional["Database"] = None
 
+# Declarative base for models
+Base = declarative_base()
+
 
 class Database:
     """
@@ -34,7 +37,7 @@ class Database:
                          uses environment variable DATABASE_URL or defaults to localhost.
         """
         self.database_url = database_url or os.getenv(
-            "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+            "DATABASE_URL", "postgresql://postgres:k4m1c4451@localhost:5432/postgres"
         )
         self._engine = None
         self._session_factory = None
@@ -112,7 +115,7 @@ class Database:
         Initialize the database by creating all tables.
         Should be called once at application startup.
         """
-        from .models import Base
+        from .models import UserModel, AnalysisModel, SessionModel, DataFileModel
 
         Base.metadata.create_all(self.engine)
         self._initialized = True
@@ -123,8 +126,6 @@ class Database:
         Drop all database tables.
         WARNING: This will delete all data!
         """
-        from .models import Base
-
         Base.metadata.drop_all(self.engine)
         logger.warning("All database tables dropped")
 

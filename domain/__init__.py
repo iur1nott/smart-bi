@@ -1,10 +1,11 @@
 """
 Domain Layer - Core business entities and value objects.
-This layer contains pure business logic with no dependencies on external frameworks.
+This layer contains pure business logic with no external dependencies.
 """
 
 from .entities import (
     User,
+    UserSession,
     Analysis,
     Slide,
     Visualization,
@@ -13,23 +14,32 @@ from .entities import (
     DataSchema,
     Column,
     ColumnType,
-    UserSession,
+    ExportFormat,
 )
 from .value_objects import (
+    Credentials,
     ExportOptions,
     FilterCondition,
     AggregationConfig,
-    Credentials,
+    ChartColors,
+    Position,
+    Size,
+    Pagination,
+    SortOrder,
+    FileMetadata,
+    LayoutConstraints,
 )
 from .repositories import (
     UserRepository,
     AnalysisRepository,
     SessionRepository,
+    DataRepository,
 )
 
 __all__ = [
     # Entities
     "User",
+    "UserSession",
     "Analysis",
     "Slide",
     "Visualization",
@@ -38,14 +48,22 @@ __all__ = [
     "DataSchema",
     "Column",
     "ColumnType",
-    "UserSession",
+    "ExportFormat",
     # Value Objects
+    "Credentials",
     "ExportOptions",
     "FilterCondition",
     "AggregationConfig",
-    "Credentials",
+    "ChartColors",
+    "Position",
+    "Size",
+    "Pagination",
+    "SortOrder",
+    "FileMetadata",
+    "LayoutConstraints",
     # Repository Interfaces
     "UserRepository",
     "AnalysisRepository",
     "SessionRepository",
+    "DataRepository",
 ]

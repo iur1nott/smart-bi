@@ -2,6 +2,11 @@
 Dashboard Builder - Main Application Entry Point
 A Streamlit application for building dashboards from Excel data.
 Following Clean Architecture with SOLID principles.
+
+This merged version combines:
+- User authentication and session management (from postgres branch)
+- Canvas-based visualization editing (from main branch)
+- PostgreSQL database integration with Docker support
 """
 
 import streamlit as st
@@ -9,7 +14,6 @@ import polars as pl
 import os
 import sys
 from typing import Optional, Dict, Any
-from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -51,8 +55,12 @@ from presentation.components import (
     render_settings_modal,
     render_export_dialog,
     render_welcome_screen,
+    render_notification,
     render_header_bar,
 )
+
+# Utils imports
+from utils.session_state import init_session_state, get_state, set_state
 
 
 # Configure Streamlit page
@@ -95,13 +103,6 @@ st.markdown(
             background: linear-gradient(135deg, #059669 0%, #047857 100%);
         }
 
-        .stButton > button[kind="secondary"] {
-            background: #EEEFF0;
-            border: none;
-            border-radius: 8px;
-            color: #1E293B;
-        }
-
         /* Cards */
         .stMetric > div {
             background-color: #F8FAFC;
@@ -123,33 +124,10 @@ st.markdown(
             overflow: hidden;
         }
 
-        /* Inputs */
-        .stTextInput > div > div > input,
-        .stSelectbox > div > div > select {
-            border-radius: 8px;
-            border: 1px solid #E2E8F0;
-        }
-
         /* Hide streamlit branding */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header {visibility: hidden;}
-
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-        }
-
-        .stTabs [data-baseweb="tab"] {
-            border-radius: 8px 8px 0 0;
-            padding: 10px 20px;
-            background: #F8FAFC;
-        }
-
-        .stTabs [aria-selected="true"] {
-            background: white !important;
-            border-bottom: 2px solid #10B981 !important;
-        }
     </style>
 """,
     unsafe_allow_html=True,
@@ -255,9 +233,7 @@ class DashboardBuilderApp:
         """Render the main sidebar."""
         analyses = self.analysis_service.get_user_analyses()
         current_id = (
-            st.session_state.current_analysis.id
-            if st.session_state.current_analysis
-            else None
+            st.session_state.current_analysis.id if st.session_state.current_analysis else None
         )
 
         selected_id = render_main_sidebar(
@@ -415,9 +391,7 @@ class DashboardBuilderApp:
     def _on_rename(self, new_name: str) -> None:
         """Handle analysis rename."""
         if st.session_state.current_analysis:
-            self.analysis_service.rename_analysis(
-                st.session_state.current_analysis.id, new_name
-            )
+            self.analysis_service.rename_analysis(st.session_state.current_analysis.id, new_name)
             st.session_state.current_analysis.name = new_name
 
     def _on_save_settings(self, settings: Dict[str, Any]) -> None:
@@ -444,7 +418,6 @@ class DashboardBuilderApp:
             x_column=config.get("x_column"),
             y_column=config.get("y_column"),
             color_column=config.get("color_column"),
-            size_column=config.get("size_column"),
             aggregation=config.get("aggregation", "sum"),
         )
 
@@ -577,15 +550,10 @@ class DashboardBuilderApp:
             if df is not None:
                 for slide in analysis.slides:
                     for viz in slide.visualizations:
-                        if (
-                            viz.config
-                            and viz.config.visualization_type != VisualizationType.TABLE
-                        ):
+                        if viz.config and viz.config.visualization_type != VisualizationType.TABLE:
                             try:
                                 fig = self.chart_factory.create_chart(df, viz.config)
-                                img_bytes = self.chart_factory.export_figure_to_bytes(
-                                    fig
-                                )
+                                img_bytes = self.chart_factory.export_figure_to_bytes(fig)
                                 chart_images[viz.id] = img_bytes
                             except Exception as e:
                                 print(f"Error generating chart: {e}")
@@ -603,17 +571,11 @@ class DashboardBuilderApp:
             )
 
             if export_options.format == "pdf":
-                return self.export_service.export_to_pdf(
-                    analysis, export_options, chart_images
-                )
+                return self.export_service.export_to_pdf(analysis, export_options, chart_images)
             elif export_options.format == "latex":
-                return self.export_service.export_to_latex(
-                    analysis, export_options, chart_images
-                )
+                return self.export_service.export_to_latex(analysis, export_options, chart_images)
             else:
-                return self.export_service.export_to_html(
-                    analysis, export_options, chart_images
-                )
+                return self.export_service.export_to_html(analysis, export_options, chart_images)
 
         except Exception as e:
             st.error(f"Erro na exportação: {str(e)}")
@@ -631,9 +593,7 @@ class DashboardBuilderApp:
                 return
 
             # Load data
-            schema, df = self.data_service.load_excel_from_streamlit(
-                uploaded_file, analysis.id
-            )
+            schema, df = self.data_service.load_excel_from_streamlit(uploaded_file, analysis.id)
 
             # Update analysis with schema
             self.analysis_service.set_data_schema(analysis.id, schema)

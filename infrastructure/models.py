@@ -15,14 +15,13 @@ from sqlalchemy import (
     LargeBinary,
     ForeignKey,
     Index,
-    UniqueConstraint,
     JSON,
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
-Base = declarative_base()
+from .database import Base
 
 
 class UserModel(Base):
@@ -42,12 +41,18 @@ class UserModel(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     settings = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
     last_login = Column(DateTime, nullable=True)
 
     # Relationships
-    analyses = relationship("AnalysisModel", back_populates="user", cascade="all, delete-orphan")
-    sessions = relationship("SessionModel", back_populates="user", cascade="all, delete-orphan")
+    analyses = relationship(
+        "AnalysisModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    sessions = relationship(
+        "SessionModel", back_populates="user", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("ix_users_username_lower", username),
@@ -82,14 +87,18 @@ class AnalysisModel(Base):
     __tablename__ = "analyses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String(200), nullable=False)
     file_path = Column(String(500), default="")
     data_schema = Column(JSON, nullable=True)
     slides = Column(JSON, default=list)
     settings = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     # Relationships
     user = relationship("UserModel", back_populates="analyses")
@@ -126,9 +135,14 @@ class SessionModel(Base):
     __tablename__ = "sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     token_hash = Column(String(64), unique=True, nullable=False, index=True)
     session_data = Column(JSON, default=dict)
+    settings = Column(JSON, default=dict)
+    current_analysis_id = Column(UUID(as_uuid=True), nullable=True)
+    current_slide_id = Column(UUID(as_uuid=True), nullable=True)
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -150,10 +164,19 @@ class SessionModel(Base):
             "id": str(self.id),
             "user_id": str(self.user_id),
             "session_data": self.session_data or {},
+            "settings": self.settings or {},
+            "current_analysis_id": str(self.current_analysis_id)
+            if self.current_analysis_id
+            else None,
+            "current_slide_id": str(self.current_slide_id)
+            if self.current_slide_id
+            else None,
             "ip_address": self.ip_address,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
-            "last_activity": self.last_activity.isoformat() if self.last_activity else None,
+            "last_activity": self.last_activity.isoformat()
+            if self.last_activity
+            else None,
         }
 
     def is_expired(self) -> bool:
@@ -173,15 +196,20 @@ class DataFileModel(Base):
     __tablename__ = "data_files"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     analysis_id = Column(
-        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("analyses.id", ondelete="CASCADE"),
+        nullable=False,
     )
     filename = Column(String(255), nullable=False)
     file_size = Column(Integer, default=0)
     file_content = Column(LargeBinary, nullable=True)
     mime_type = Column(
-        String(100), default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        String(100),
+        default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -215,9 +243,13 @@ class ExportJobModel(Base):
     __tablename__ = "export_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     analysis_id = Column(
-        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("analyses.id", ondelete="CASCADE"),
+        nullable=False,
     )
     format = Column(String(20), nullable=False)
     options = Column(JSON, default=dict)
@@ -245,7 +277,9 @@ class ExportJobModel(Base):
             "file_path": self.file_path,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
         }
 
     def __repr__(self) -> str:

@@ -5,6 +5,7 @@ Implements business logic for login, registration, and token management.
 
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 
 from domain.entities import User, UserSession
@@ -57,9 +58,7 @@ class AuthService:
         self._session_repository = session_repository or SessionRepositoryImpl()
         self._jwt_handler = jwt_handler or JWTHandler()
 
-    def register(
-        self, username: str, email: str, password: str, full_name: str = ""
-    ) -> AuthResult:
+    def register(self, username: str, email: str, password: str, full_name: str = "") -> AuthResult:
         """
         Register a new user.
 
@@ -101,17 +100,13 @@ class AuthService:
 
         # Save user
         if not self._user_repository.save(user):
-            return AuthResult(
-                success=False, error_message="Failed to create user account"
-            )
+            return AuthResult(success=False, error_message="Failed to create user account")
 
         # Create session and token
         session = UserSession(user_id=user.id, settings=user.settings)
         self._session_repository.save(session)
 
-        token = self._jwt_handler.create_access_token(
-            user_id=user.id, username=user.username
-        )
+        token = self._jwt_handler.create_access_token(user_id=user.id, username=user.username)
 
         logger.info(f"User registered: {username}")
 
@@ -142,9 +137,7 @@ class AuthService:
 
         if not user:
             logger.warning(f"Login failed: user not found - {username}")
-            return AuthResult(
-                success=False, error_message="Invalid username or password"
-            )
+            return AuthResult(success=False, error_message="Invalid username or password")
 
         # Check if user is active
         if not user.is_active:
@@ -154,9 +147,7 @@ class AuthService:
         # Verify password
         if not PasswordHandler.verify_password(password, user.password_hash):
             logger.warning(f"Login failed: invalid password - {username}")
-            return AuthResult(
-                success=False, error_message="Invalid username or password"
-            )
+            return AuthResult(success=False, error_message="Invalid username or password")
 
         # Update last login
         user.update_last_login()
@@ -169,9 +160,7 @@ class AuthService:
         self._session_repository.save(session)
 
         # Generate token
-        token = self._jwt_handler.create_access_token(
-            user_id=user.id, username=user.username
-        )
+        token = self._jwt_handler.create_access_token(user_id=user.id, username=user.username)
 
         logger.info(f"User logged in: {username}")
 
@@ -266,9 +255,7 @@ class AuthService:
         user.update_settings(settings)
         return self._user_repository.save(user)
 
-    def change_password(
-        self, user_id: str, current_password: str, new_password: str
-    ) -> AuthResult:
+    def change_password(self, user_id: str, current_password: str, new_password: str) -> AuthResult:
         """
         Change a user's password.
 
@@ -286,9 +273,7 @@ class AuthService:
 
         # Verify current password
         if not PasswordHandler.verify_password(current_password, user.password_hash):
-            return AuthResult(
-                success=False, error_message="Current password is incorrect"
-            )
+            return AuthResult(success=False, error_message="Current password is incorrect")
 
         # Validate new password
         credentials = Credentials(username=user.username, password=new_password)

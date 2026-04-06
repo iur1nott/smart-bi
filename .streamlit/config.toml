@@ -22,9 +22,9 @@ serverPort = 8501
 
 [runner]
 magicEnabled = true
-installTracer = false
-fixMatplotlib = true
-postScript = ""
+# installTracer = false
+# fixMatplotlib = true
+# postScript = ""
 fastReruns = true
 enforceSerializableSessionState = false
 
@@ -36,7 +36,7 @@ toolbarMode = "minimal"
 level = "info"
 messageFormat = "%(asctime)s %(message)s"
 
-[deprecation]
-showfileUploaderEncoding = true
-showPyplotGlobalUse = true
-showImageFormat = true
+# [deprecation]
+# showfileUploaderEncoding = true
+# showPyplotGlobalUse = true
+# showImageFormat = true
