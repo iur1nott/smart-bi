@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import os
 import logging
+import streamlit as st
 
 from config import settings, Constants
 from domain.entities import (
@@ -33,11 +34,50 @@ class DataService:
     - Schema inference and column type detection
     - Data filtering and aggregation
     - Data transformation for visualizations
+
+    Uses Streamlit session state for data caching to persist across reruns.
     """
 
     def __init__(self):
         """Initialize the data service."""
-        self._data_cache: Dict[str, pl.DataFrame] = {}
+        # Use session state for caching instead of instance variable
+        if "data_cache" not in st.session_state:
+            st.session_state.data_cache = {}
+
+    @property
+    def _data_cache(self) -> Dict[str, pl.DataFrame]:
+        """Get the data cache from session state."""
+        return st.session_state.data_cache
+
+    def _clean_duplicate_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        """
+        Rename duplicate column names to make them unique.
+
+        Args:
+            df: Polars DataFrame that may have duplicate column names
+
+        Returns:
+            DataFrame with unique column names
+        """
+        columns = df.columns
+        seen = {}
+        new_columns = []
+
+        for col in columns:
+            if col in seen:
+                seen[col] += 1
+                new_columns.append(f"{col}_{seen[col]}")
+            else:
+                seen[col] = 0
+                new_columns.append(col)
+
+        if new_columns != columns:
+            logger.warning(
+                f"Detected duplicate column names, renamed: {dict(zip(columns, new_columns))}"
+            )
+            df = df.rename(dict(zip(columns, new_columns)))
+
+        return df
 
     def load_excel_file(
         self, file_path: str, analysis_id: str
@@ -55,8 +95,11 @@ class DataService:
         # Read the Excel file using Polars
         df = pl.read_excel(file_path)
 
-        # Cache the dataframe
-        self._data_cache[analysis_id] = df
+        # Clean duplicate columns
+        df = self._clean_duplicate_columns(df)
+
+        # Cache the dataframe in session state
+        st.session_state.data_cache[analysis_id] = df
 
         # Generate schema
         schema = self._infer_schema(df, file_path)
@@ -84,7 +127,9 @@ class DataService:
 
         try:
             df = pl.read_excel(tmp_path)
-            self._data_cache[analysis_id] = df
+            # Clean duplicate columns
+            df = self._clean_duplicate_columns(df)
+            st.session_state.data_cache[analysis_id] = df
             schema = self._infer_schema(df, file_name, len(file_bytes))
             return schema, df
         finally:
@@ -281,18 +326,18 @@ class DataService:
 
     def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
         """Get cached DataFrame for an analysis."""
-        return self._data_cache.get(analysis_id)
+        return st.session_state.data_cache.get(analysis_id)
 
     def set_cached_data(self, analysis_id: str, df: pl.DataFrame) -> None:
         """Set cached DataFrame for an analysis."""
-        self._data_cache[analysis_id] = df
+        st.session_state.data_cache[analysis_id] = df
 
     def clear_cache(self, analysis_id: Optional[str] = None):
         """Clear cached data for specific analysis or all."""
         if analysis_id:
-            self._data_cache.pop(analysis_id, None)
+            st.session_state.data_cache.pop(analysis_id, None)
         else:
-            self._data_cache.clear()
+            st.session_state.data_cache.clear()
 
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]

@@ -101,6 +101,8 @@ class ChartFactory:
             return df
 
         # Determine aggregation expression
+        agg_name = f"{config.y_column}_{config.aggregation}"
+
         if config.aggregation == "sum":
             agg_expr = pl.col(config.y_column).sum()
         elif config.aggregation == "mean":
@@ -117,12 +119,23 @@ class ChartFactory:
         # Build group columns
         group_cols = [config.x_column]
         if config.color_column and config.color_column in df.columns:
-            group_cols.append(config.color_column)
+            # Avoid duplicate group columns
+            if config.color_column != config.x_column:
+                group_cols.append(config.color_column)
 
-        result = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
-        return result.sort(config.x_column)
+        # Aggregate and use a unique name for the aggregated column
+        result = df.group_by(group_cols).agg(agg_expr.alias(agg_name))
+        result = result.sort(config.x_column)
 
-    def _create_bar_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+        # Rename back to y_column for plotting (but avoid duplicate)
+        if agg_name != config.y_column and config.y_column not in result.columns:
+            result = result.rename({agg_name: config.y_column})
+
+        return result
+
+    def _create_bar_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a bar chart."""
         if config.x_column and config.y_column:
             df = self._prepare_aggregated_data(df, config)
@@ -149,7 +162,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_line_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_line_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a line chart."""
         if config.x_column and config.y_column:
             df = self._prepare_aggregated_data(df, config)
@@ -176,7 +191,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_pie_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_pie_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a pie chart."""
         if not config.x_column or not config.y_column:
             # Return empty figure
@@ -196,7 +213,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_area_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_area_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create an area chart."""
         if config.x_column and config.y_column:
             df = self._prepare_aggregated_data(df, config)
@@ -221,7 +240,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_scatter_plot(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_scatter_plot(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a scatter plot."""
         pdf = df.to_pandas()
 
@@ -242,7 +263,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_histogram(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_histogram(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a histogram."""
         if not config.x_column:
             return go.Figure()
@@ -259,7 +282,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_box_plot(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_box_plot(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a box plot."""
         pdf = df.to_pandas()
 
@@ -282,7 +307,9 @@ class ChartFactory:
 
         return fig
 
-    def _create_heatmap(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def _create_heatmap(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
         """Create a heatmap."""
         if not config.x_column or not config.y_column:
             return go.Figure()

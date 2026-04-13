@@ -156,6 +156,7 @@ class DashboardBuilderApp:
             "new_viz_type": None,
             "editing_viz_id": None,
             "notification": None,
+            "data_cache": {},  # Cache for loaded DataFrames
         }
 
         for key, value in defaults.items():
@@ -233,7 +234,9 @@ class DashboardBuilderApp:
         """Render the main sidebar."""
         analyses = self.analysis_service.get_user_analyses()
         current_id = (
-            st.session_state.current_analysis.id if st.session_state.current_analysis else None
+            st.session_state.current_analysis.id
+            if st.session_state.current_analysis
+            else None
         )
 
         selected_id = render_main_sidebar(
@@ -391,7 +394,9 @@ class DashboardBuilderApp:
     def _on_rename(self, new_name: str) -> None:
         """Handle analysis rename."""
         if st.session_state.current_analysis:
-            self.analysis_service.rename_analysis(st.session_state.current_analysis.id, new_name)
+            self.analysis_service.rename_analysis(
+                st.session_state.current_analysis.id, new_name
+            )
             st.session_state.current_analysis.name = new_name
 
     def _on_save_settings(self, settings: Dict[str, Any]) -> None:
@@ -550,10 +555,15 @@ class DashboardBuilderApp:
             if df is not None:
                 for slide in analysis.slides:
                     for viz in slide.visualizations:
-                        if viz.config and viz.config.visualization_type != VisualizationType.TABLE:
+                        if (
+                            viz.config
+                            and viz.config.visualization_type != VisualizationType.TABLE
+                        ):
                             try:
                                 fig = self.chart_factory.create_chart(df, viz.config)
-                                img_bytes = self.chart_factory.export_figure_to_bytes(fig)
+                                img_bytes = self.chart_factory.export_figure_to_bytes(
+                                    fig
+                                )
                                 chart_images[viz.id] = img_bytes
                             except Exception as e:
                                 print(f"Error generating chart: {e}")
@@ -571,11 +581,17 @@ class DashboardBuilderApp:
             )
 
             if export_options.format == "pdf":
-                return self.export_service.export_to_pdf(analysis, export_options, chart_images)
+                return self.export_service.export_to_pdf(
+                    analysis, export_options, chart_images
+                )
             elif export_options.format == "latex":
-                return self.export_service.export_to_latex(analysis, export_options, chart_images)
+                return self.export_service.export_to_latex(
+                    analysis, export_options, chart_images
+                )
             else:
-                return self.export_service.export_to_html(analysis, export_options, chart_images)
+                return self.export_service.export_to_html(
+                    analysis, export_options, chart_images
+                )
 
         except Exception as e:
             st.error(f"Erro na exportação: {str(e)}")
@@ -593,7 +609,9 @@ class DashboardBuilderApp:
                 return
 
             # Load data
-            schema, df = self.data_service.load_excel_from_streamlit(uploaded_file, analysis.id)
+            schema, df = self.data_service.load_excel_from_streamlit(
+                uploaded_file, analysis.id
+            )
 
             # Update analysis with schema
             self.analysis_service.set_data_schema(analysis.id, schema)
