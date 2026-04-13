@@ -398,6 +398,7 @@ class DataService:
         elif config.visualization_type in [
             VisualizationType.LINE_CHART,
             VisualizationType.BAR_CHART,
+            VisualizationType.COLUMN_CHART,
             VisualizationType.AREA_CHART,
         ]:
             if config.x_column:
@@ -512,8 +513,13 @@ class DataService:
                 # Tenta converter strings para data automaticamente
                 df = df.with_columns(
                     pl.col(col_name).cast(pl.Date, strict=False)
-                )   
-                
+                )
+            elif expected_type in (ColumnType.CATEGORICAL, ColumnType.TEXT):
+                # Garante que a coluna seja string
+                df = df.with_columns(
+                    pl.col(col_name).cast(pl.String, strict=False)
+                )
+
         return df
 
     def rename_columns(self, df: pl.DataFrame, mapping: Dict[str, str]) -> pl.DataFrame:

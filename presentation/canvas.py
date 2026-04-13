@@ -104,8 +104,8 @@ def render_visualization(
             col_info = []
             if viz.config.x_column:
                 col_info.append(f"X: {viz.config.x_column}")
-            if viz.config.y_column:
-                col_info.append(f"Y: {viz.config.y_column}")
+            if viz.config.y_columns:
+                col_info.append(f"Y: {viz.config.y_columns}")
             if viz.config.color_column:
                 col_info.append(f"Color: {viz.config.color_column}")
             if col_info:

@@ -7,255 +7,223 @@ from typing import Dict, Any, Optional, List
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import plotly.io as pio
-import io
 
 from domain.entities import VisualizationType, VisualizationConfig
 
 
 class ChartFactory:
-    """
-    Factory class for creating different types of charts.
-    Uses Plotly for interactive visualizations.
-    """
+    """Factory class for creating different types of charts using Plotly."""
 
-    # Default color schemes
-    COLOR_SCHEMES = {
+    COLOR_SCHEMES: Dict[str, list] = {
         "default": px.colors.qualitative.Plotly,
-        "pastel": px.colors.qualitative.Pastel,
-        "dark": px.colors.qualitative.Dark24,
-        "light": px.colors.qualitative.Light24,
-        "vivid": px.colors.qualitative.Vivid,
-        "safe": px.colors.qualitative.Safe,
-        "d3": px.colors.qualitative.D3,
-        "alphabet": px.colors.qualitative.Alphabet,
+        "pastel":  px.colors.qualitative.Pastel,
+        "dark":    px.colors.qualitative.Dark24,
+        "vivid":   px.colors.qualitative.Vivid,
+        "safe":    px.colors.qualitative.Safe,
+        "d3":      px.colors.qualitative.D3,
+        "set1":    px.colors.qualitative.Set1,
+        "set2":    px.colors.qualitative.Set2,
     }
 
     def __init__(self, default_height: int = 400, default_width: int = 600):
-        """Initialize the chart factory with default dimensions."""
         self.default_height = default_height
         self.default_width = default_width
-        self.current_theme = "default"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Public API
+    # ─────────────────────────────────────────────────────────────────────────
 
     def create_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
-        """
-        Create a chart based on configuration.
-
-        Args:
-            df: Polars DataFrame with data
-            config: Visualization configuration
-
-        Returns:
-            Plotly Figure object
-        """
-        chart_methods = {
-            VisualizationType.LINE_CHART: self._create_line_chart,
-            VisualizationType.BAR_CHART: self._create_bar_chart,
-            VisualizationType.PIE_CHART: self._create_pie_chart,
+        """Create a Plotly figure based on VisualizationConfig."""
+        dispatch = {
+            VisualizationType.COLUMN_CHART: self._create_column_chart,
+            VisualizationType.BAR_CHART:    self._create_bar_chart,
+            VisualizationType.LINE_CHART:   self._create_line_chart,
+            VisualizationType.AREA_CHART:   self._create_area_chart,
+            VisualizationType.PIE_CHART:    self._create_pie_chart,
             VisualizationType.SCATTER_PLOT: self._create_scatter_plot,
-            VisualizationType.HISTOGRAM: self._create_histogram,
-            VisualizationType.AREA_CHART: self._create_area_chart,
-            VisualizationType.BOX_PLOT: self._create_box_plot,
-            VisualizationType.HEATMAP: self._create_heatmap,
+            VisualizationType.HISTOGRAM:    self._create_histogram,
+            VisualizationType.BOX_PLOT:     self._create_box_plot,
+            VisualizationType.HEATMAP:      self._create_heatmap,
         }
-
-        method = chart_methods.get(config.visualization_type)
-        if method:
-            fig = method(df, config)
-        else:
-            fig = go.Figure()
-            fig.add_annotation(
-                text=f"Chart type '{config.visualization_type.value}' not implemented",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-            )
-
-        # Apply common styling
+        method = dispatch.get(config.visualization_type)
+        fig = method(df, config) if method else self._create_empty_figure(
+            f"Tipo '{config.visualization_type.value}' não implementado"
+        )
         self._apply_common_style(fig, config)
-
         return fig
 
-    def _create_line_chart(
+    def export_figure_to_bytes(
+        self, fig: go.Figure, format: str = "png", scale: float = 2.0
+    ) -> bytes:
+        return pio.to_image(fig, format=format, scale=scale)
+
+    def export_figure_to_base64(
+        self, fig: go.Figure, format: str = "png", scale: float = 2.0
+    ) -> str:
+        import base64
+        return base64.b64encode(self.export_figure_to_bytes(fig, format, scale)).decode()
+
+    def get_available_color_schemes(self) -> List[str]:
+        return list(self.COLOR_SCHEMES.keys())
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Private helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _colors(self, config: VisualizationConfig) -> list:
+        return self.COLOR_SCHEMES.get(config.color_scheme, self.COLOR_SCHEMES["default"])
+
+    def _agg_expr(self, col: str, agg: str) -> pl.Expr:
+        return {
+            "sum":   pl.col(col).sum(),
+            "mean":  pl.col(col).mean(),
+            "count": pl.col(col).count(),
+            "min":   pl.col(col).min(),
+            "max":   pl.col(col).max(),
+        }.get(agg, pl.col(col).sum())
+
+    def _aggregate(
+        self,
+        df: pl.DataFrame,
+        x_col: str,
+        y_cols: List[str],
+        agg: str,
+        group_col: Optional[str] = None,
+    ) -> pl.DataFrame:
+        """GroupBy x_col (+ group_col) and aggregate each y_col."""
+        valid_y = [c for c in y_cols if c and c in df.columns]
+        if not valid_y or x_col not in df.columns:
+            return df
+
+        group_keys = [x_col]
+        if group_col and group_col in df.columns and group_col != x_col:
+            group_keys.append(group_col)
+
+        return (
+            df.group_by(group_keys)
+            .agg([self._agg_expr(c, agg) for c in valid_y])
+            .sort(x_col)
+        )
+
+    def _fmt_values(self, values: list) -> List[str]:
+        """Format a list of values for chart text labels."""
+        out = []
+        for v in values:
+            if v is None:
+                out.append("")
+            elif isinstance(v, float):
+                out.append(f"{v:,.2f}")
+            else:
+                out.append(str(v))
+        return out
+
+    def _y_cols_from_config(self, config: VisualizationConfig) -> List[str]:
+        """Return the effective list of Y columns from config."""
+        if config.y_columns:
+            return [c for c in config.y_columns if c]
+        if config.y_column:
+            return [config.y_column]
+        return []
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Chart builders
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _create_column_chart(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create a line chart."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
+        """Vertical bar (column) chart – supports multiple Y metrics."""
+        y_cols = self._y_cols_from_config(config)
+        if not y_cols or not config.x_column:
+            return self._create_empty_figure("Selecione as colunas de Categoria e Valor")
 
-        if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
+        df_plot = self._aggregate(
+            df, config.x_column, y_cols, config.aggregation, config.color_column
+        )
+        colors = self._colors(config)
+        fig = go.Figure()
 
-        color_col = config.color_column
-
-        if color_col and color_col in df.columns:
-            fig = px.line(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-        else:
-            fig = px.line(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+        for i, col in enumerate(y_cols):
+            values = df_plot[col].to_list()
+            fig.add_trace(
+                go.Bar(
+                    x=df_plot[config.x_column].to_list(),
+                    y=values,
+                    name=col,
+                    marker_color=colors[i % len(colors)],
+                    text=self._fmt_values(values) if config.show_values else None,
+                    textposition="outside" if config.show_values else "none",
+                )
             )
 
+        fig.update_layout(
+            barmode="group",
+            xaxis_title=config.x_column,
+            yaxis_title="Valor",
+            hovermode="x unified",
+        )
         return fig
 
     def _create_bar_chart(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create a bar chart."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-        y_col = config.y_column
+        """Horizontal bar chart – supports multiple Y metrics."""
+        y_cols = self._y_cols_from_config(config)
+        if not y_cols or not config.x_column:
+            return self._create_empty_figure("Selecione as colunas de Categoria e Valor")
 
-        if not x_col:
-            return self._create_empty_figure("Please select X column")
+        df_plot = self._aggregate(df, config.x_column, y_cols, config.aggregation)
+        colors = self._colors(config)
+        fig = go.Figure()
 
-        color_col = config.color_column
-
-        if y_col:
-            if color_col and color_col in df.columns:
-                fig = px.bar(
-                    pandas_df,
-                    x=x_col,
-                    y=y_col,
-                    color=color_col,
-                    barmode="group",
-                    color_discrete_sequence=self.COLOR_SCHEMES.get(
-                        config.color_scheme, self.COLOR_SCHEMES["default"]
-                    ),
+        for i, col in enumerate(y_cols):
+            values = df_plot[col].to_list()
+            fig.add_trace(
+                go.Bar(
+                    y=df_plot[config.x_column].to_list(),
+                    x=values,
+                    name=col,
+                    orientation="h",
+                    marker_color=colors[i % len(colors)],
+                    text=self._fmt_values(values) if config.show_values else None,
+                    textposition="outside" if config.show_values else "none",
                 )
-            else:
-                fig = px.bar(
-                    pandas_df,
-                    x=x_col,
-                    y=y_col,
-                    color_discrete_sequence=self.COLOR_SCHEMES.get(
-                        config.color_scheme, self.COLOR_SCHEMES["default"]
-                    ),
-                )
-        else:
-            # Count plot
-            counts = pandas_df[x_col].value_counts().reset_index()
-            counts.columns = [x_col, "count"]
-            fig = px.bar(
-                counts,
-                x=x_col,
-                y="count",
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
             )
 
+        fig.update_layout(
+            barmode="group",
+            xaxis_title="Valor",
+            yaxis_title=config.x_column,
+            hovermode="y unified",
+        )
         return fig
 
-    def _create_pie_chart(
+    def _create_line_chart(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create a pie chart."""
-        pandas_df = df.to_pandas()
-        names_col = config.x_column
-        values_col = config.y_column
-
-        if not names_col:
-            return self._create_empty_figure("Please select a column for categories")
-
-        if values_col:
-            fig = px.pie(
-                pandas_df,
-                names=names_col,
-                values=values_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-        else:
-            # Count occurrences
-            counts = pandas_df[names_col].value_counts().reset_index()
-            counts.columns = [names_col, "count"]
-            fig = px.pie(
-                counts,
-                names=names_col,
-                values="count",
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-
-        return fig
-
-    def _create_scatter_plot(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
-        """Create a scatter plot."""
-        pandas_df = df.to_pandas()
+        """Line chart with optional aggregation and value labels."""
         x_col = config.x_column
         y_col = config.y_column
-
         if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
+            return self._create_empty_figure("Selecione colunas X e Y")
 
-        color_col = config.color_column
-        size_col = config.size_column
+        df_plot = self._aggregate(df, x_col, [y_col], config.aggregation, config.color_column)
+        pdf = df_plot.to_pandas()
+        grp = config.color_column if config.color_column and config.color_column in pdf.columns else None
 
-        fig = px.scatter(
-            pandas_df,
-            x=x_col,
-            y=y_col,
-            color=color_col if color_col else None,
-            size=size_col if size_col else None,
-            color_discrete_sequence=self.COLOR_SCHEMES.get(
-                config.color_scheme, self.COLOR_SCHEMES["default"]
-            ),
-            opacity=0.7,
+        fig = px.line(
+            pdf, x=x_col, y=y_col, color=grp,
+            color_discrete_sequence=self._colors(config),
+            markers=True,
         )
 
-        return fig
-
-    def _create_histogram(
-        self, df: pl.DataFrame, config: VisualizationConfig
-    ) -> go.Figure:
-        """Create a histogram."""
-        pandas_df = df.to_pandas()
-        x_col = config.x_column
-
-        if not x_col:
-            return self._create_empty_figure("Please select a column for histogram")
-
-        color_col = config.color_column
-
-        if color_col and color_col in df.columns:
-            fig = px.histogram(
-                pandas_df,
-                x=x_col,
-                color=color_col,
-                barmode="overlay",
-                opacity=0.7,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
-            )
-        else:
-            fig = px.histogram(
-                pandas_df,
-                x=x_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+        if config.show_values:
+            fig.update_traces(
+                text=pdf[y_col].round(2).astype(str).tolist(),
+                textposition="top center",
+                mode="lines+markers+text",
             )
 
         return fig
@@ -263,110 +231,164 @@ class ChartFactory:
     def _create_area_chart(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create an area chart."""
-        pandas_df = df.to_pandas()
+        """Area chart with optional aggregation and value labels."""
         x_col = config.x_column
         y_col = config.y_column
-
         if not x_col or not y_col:
-            return self._create_empty_figure("Please select X and Y columns")
+            return self._create_empty_figure("Selecione colunas X e Y")
 
-        color_col = config.color_column
+        df_plot = self._aggregate(df, x_col, [y_col], config.aggregation, config.color_column)
+        pdf = df_plot.to_pandas()
+        grp = config.color_column if config.color_column and config.color_column in pdf.columns else None
 
-        if color_col and color_col in df.columns:
-            fig = px.area(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+        fig = px.area(
+            pdf, x=x_col, y=y_col, color=grp,
+            color_discrete_sequence=self._colors(config),
+        )
+
+        if config.show_values:
+            fig.update_traces(
+                text=pdf[y_col].round(2).astype(str).tolist(),
+                textposition="top center",
+                mode="lines+markers+text",
             )
-        else:
-            fig = px.area(
-                pandas_df,
-                x=x_col,
-                y=y_col,
-                color_discrete_sequence=self.COLOR_SCHEMES.get(
-                    config.color_scheme, self.COLOR_SCHEMES["default"]
-                ),
+
+        return fig
+
+    def _create_pie_chart(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
+        """Pie chart with real aggregation."""
+        x_col = config.x_column
+        y_col = config.y_column or (config.y_columns[0] if config.y_columns else None)
+        if not x_col or not y_col:
+            return self._create_empty_figure("Selecione colunas de Categoria e Valor")
+
+        df_plot = self._aggregate(df, x_col, [y_col], config.aggregation)
+        pdf = df_plot.to_pandas()
+
+        fig = px.pie(
+            pdf, names=x_col, values=y_col,
+            color_discrete_sequence=self._colors(config),
+        )
+        fig.update_traces(
+            textinfo="value+percent+label" if config.show_values else "percent+label"
+        )
+        return fig
+
+    def _create_scatter_plot(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
+        """Scatter plot (raw data, no aggregation)."""
+        x_col = config.x_column
+        y_col = config.y_column
+        if not x_col or not y_col:
+            return self._create_empty_figure("Selecione colunas X e Y")
+
+        pdf = df.to_pandas()
+        fig = px.scatter(
+            pdf, x=x_col, y=y_col,
+            color=config.color_column if config.color_column else None,
+            size=config.size_column if config.size_column else None,
+            color_discrete_sequence=self._colors(config),
+            opacity=0.7,
+        )
+
+        if config.show_values:
+            fig.update_traces(
+                text=pdf[y_col].astype(str).tolist(),
+                textposition="top center",
             )
+
+        return fig
+
+    def _create_histogram(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> go.Figure:
+        """Histogram (distribution of one column)."""
+        x_col = config.x_column
+        if not x_col:
+            return self._create_empty_figure("Selecione uma coluna para o histograma")
+
+        pdf = df.to_pandas()
+        fig = px.histogram(
+            pdf, x=x_col,
+            color=config.color_column if config.color_column else None,
+            barmode="overlay",
+            opacity=0.75,
+            color_discrete_sequence=self._colors(config),
+        )
+
+        if config.show_values:
+            fig.update_traces(texttemplate="%{y}", textposition="outside")
 
         return fig
 
     def _create_box_plot(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create a box plot."""
-        pandas_df = df.to_pandas()
+        """Box plot (raw data)."""
         y_col = config.y_column
-        x_col = config.x_column
-
         if not y_col:
-            return self._create_empty_figure("Please select Y column for box plot")
+            return self._create_empty_figure("Selecione a coluna de valores para o box plot")
 
-        color_col = config.color_column
-
+        pdf = df.to_pandas()
         fig = px.box(
-            pandas_df,
-            x=x_col if x_col else None,
+            pdf,
+            x=config.x_column if config.x_column else None,
             y=y_col,
-            color=color_col if color_col else None,
-            color_discrete_sequence=self.COLOR_SCHEMES.get(
-                config.color_scheme, self.COLOR_SCHEMES["default"]
-            ),
+            color=config.color_column if config.color_column else None,
+            color_discrete_sequence=self._colors(config),
         )
-
         return fig
 
     def _create_heatmap(
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
-        """Create a heatmap."""
-        if not config.x_column or not config.y_column:
-            return self._create_empty_figure(
-                "Please select X and Y columns for heatmap"
-            )
-
+        """Heatmap with pivot aggregation."""
         x_col = config.x_column
         y_col = config.y_column
-        value_col = config.color_column or config.y_column
+        if not x_col or not y_col:
+            return self._create_empty_figure("Selecione colunas X e Y para o heatmap")
 
-        # Create pivot table
-        pivot_df = df.group_by([x_col, y_col]).agg(
-            pl.col(value_col).sum().alias("value")
+        value_col = config.color_column or y_col
+        pivot_pandas = (
+            df.group_by([x_col, y_col])
+            .agg(self._agg_expr(value_col, config.aggregation).alias("value"))
+            .to_pandas()
+            .pivot(index=y_col, columns=x_col, values="value")
         )
 
-        pivot_pandas = pivot_df.to_pandas()
-        pivot_table = pivot_pandas.pivot(index=y_col, columns=x_col, values="value")
-
-        fig = px.imshow(pivot_table, color_continuous_scale="Blues", aspect="auto")
-
+        fig = px.imshow(
+            pivot_pandas,
+            color_continuous_scale="Blues",
+            aspect="auto",
+            text_auto=config.show_values,
+        )
         return fig
 
-    def _create_empty_figure(self, message: str = "No data") -> go.Figure:
-        """Create an empty figure with a message."""
+    # ─────────────────────────────────────────────────────────────────────────
+    # Shared utilities
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _create_empty_figure(self, message: str = "Sem dados") -> go.Figure:
         fig = go.Figure()
         fig.add_annotation(
             text=message,
-            xref="paper",
-            yref="paper",
-            x=0.5,
-            y=0.5,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
             showarrow=False,
-            font=dict(size=16, color="gray"),
+            font=dict(size=14, color="gray"),
         )
         fig.update_xaxes(showgrid=False, showticklabels=False)
         fig.update_yaxes(showgrid=False, showticklabels=False)
         return fig
 
-    def _apply_common_style(self, fig: go.Figure, config: VisualizationConfig) -> None:
-        """Apply common styling to the figure."""
-        title = config.title if config.title else ""
-
+    def _apply_common_style(
+        self, fig: go.Figure, config: VisualizationConfig
+    ) -> None:
         fig.update_layout(
-            title=title,
+            title=config.title or "",
             height=self.default_height,
             width=self.default_width,
             showlegend=config.show_legend,
@@ -387,82 +409,3 @@ class ChartFactory:
         else:
             fig.update_xaxes(showgrid=False)
             fig.update_yaxes(showgrid=False)
-
-    def export_figure_to_bytes(
-        self, fig: go.Figure, format: str = "png", scale: float = 2.0
-    ) -> bytes:
-        """
-        Export figure to image bytes.
-
-        Args:
-            fig: Plotly Figure object
-            format: Image format (png, jpeg, svg, pdf)
-            scale: Scale factor for higher resolution
-
-        Returns:
-            Image as bytes
-        """
-        img_bytes = pio.to_image(fig, format=format, scale=scale)
-        return img_bytes
-
-    def export_figure_to_base64(
-        self, fig: go.Figure, format: str = "png", scale: float = 2.0
-    ) -> str:
-        """
-        Export figure to base64 encoded string.
-
-        Args:
-            fig: Plotly Figure object
-            format: Image format
-            scale: Scale factor
-
-        Returns:
-            Base64 encoded image string
-        """
-        import base64
-
-        img_bytes = self.export_figure_to_bytes(fig, format, scale)
-        return base64.b64encode(img_bytes).decode("utf-8")
-
-    def get_available_chart_types(self) -> List[Dict[str, str]]:
-        """Get list of available chart types with display names."""
-        return [
-            {
-                "id": VisualizationType.BAR_CHART.value,
-                "name": "Bar Chart",
-                "icon": "📊",
-            },
-            {
-                "id": VisualizationType.LINE_CHART.value,
-                "name": "Line Chart",
-                "icon": "📈",
-            },
-            {
-                "id": VisualizationType.PIE_CHART.value,
-                "name": "Pie Chart",
-                "icon": "🥧",
-            },
-            {
-                "id": VisualizationType.AREA_CHART.value,
-                "name": "Area Chart",
-                "icon": "📉",
-            },
-            {
-                "id": VisualizationType.SCATTER_PLOT.value,
-                "name": "Scatter Plot",
-                "icon": "⚬",
-            },
-            {"id": VisualizationType.HISTOGRAM.value, "name": "Histogram", "icon": "▊"},
-            {"id": VisualizationType.BOX_PLOT.value, "name": "Box Plot", "icon": "📦"},
-            {"id": VisualizationType.HEATMAP.value, "name": "Heatmap", "icon": "🔥"},
-            {"id": VisualizationType.TABLE.value, "name": "Table", "icon": "📋"},
-            {
-                "id": VisualizationType.METRIC_CARD.value,
-                "name": "Metric Card",
-                "icon": "💳",
-            },
-        ]
-
-    def get_available_color_schemes(self) -> List[str]:
-        """Get list of available color schemes."""
-        return list(self.COLOR_SCHEMES.keys())

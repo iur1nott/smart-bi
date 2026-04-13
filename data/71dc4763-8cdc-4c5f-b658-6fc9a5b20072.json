@@ -1,0 +1,142 @@
+{
+  "id": "71dc4763-8cdc-4c5f-b658-6fc9a5b20072",
+  "name": "Planilha Pok\u00e9mon para Teste de Projeto",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "Treinador",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Pok\u00e9mon",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Categoria",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Valor",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Data",
+        "data_type": "datetime",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Status de Sa\u00fade",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Valor_1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Regional",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 10,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "a572a450-d000-4a3a-a497-f8b47db528c3",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "7c9b73bf-aa79-4fac-877a-87bcebe09ac4",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "Valor by Pok\u00e9mon",
+            "x_column": "Pok\u00e9mon",
+            "y_column": "Valor",
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "mean",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "f0a3e58b-d086-4d08-8b51-2de5a0f420fe",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "Valor by Pok\u00e9mon",
+            "x_column": "Treinador",
+            "y_column": "Valor",
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "count",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-29T11:39:28.295812",
+      "updated_at": "2026-03-29T11:42:25.367098"
+    }
+  ],
+  "created_at": "2026-03-29T11:39:28.295766",
+  "updated_at": "2026-03-29T11:39:28.295817",
+  "file_path": null
+}

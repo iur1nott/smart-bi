@@ -255,47 +255,6 @@ class DashboardBuilderApp:
 
     def _render_main_layout(self) -> None:
         """Render the main application layout."""
-        # --- TASK: MECANISMO DE MAPEAMENTO E VALIDAÇÃO ---
-        # Verifica se existe um upload pendente que precisa de mapeamento
-        if get_state("show_column_mapper"):
-            df = get_state("temp_df")
-            
-            # Chama o widget de interface que você criou em presentation/widgets.py
-            mapping = render_column_mapper(df)
-            
-            st.divider()
-            if st.button("Finalizar Mapeamento e Validar Dados", type="primary", use_container_width=True):
-                # 1. Executa a Renomeação (Task 2)
-                df_renomeado = self.data_service.rename_columns(df, mapping)
-                
-                # 2. Define o contrato de tipos baseado no que o usuário escolheu
-                # Mapeia as seleções para os enums de ColumnType
-                tipos_doc = {
-                    v: ColumnType.NUMERIC if v == "Valor" else ColumnType.DATETIME 
-                    for k, v in mapping.items() if v in ["Valor", "Data"]
-                }
-                
-                # 3. Executa a Validação de Tipagem (Task 1 - Casting)
-                df_final = self.data_service.validate_and_cast_types(df_renomeado, tipos_doc)
-                
-                # 4. Finaliza a criação da análise com os dados limpos
-                name = get_state("pending_upload_name")
-                file_name = get_state("pending_file_name")
-                
-                # Aqui você chama o fluxo original de salvar a análise
-                # Nota: Verifique se o seu analysis_service.create_analysis aceita o DF tratado
-                analysis = self.analysis_service.create_analysis(name)
-                
-                # Limpa os estados temporários e fecha o mapeador
-                set_state("show_column_mapper", False)
-                set_state("temp_df", None)
-                st.success("Dados validados com sucesso!")
-                st.rerun()
-            
-            # Interrompe a renderização do layout principal enquanto mapeia
-            return 
-        # -------------------------------------------------
-
         current_analysis = self.analysis_service.get_current_analysis()
 
         if not current_analysis:
@@ -336,38 +295,37 @@ class DashboardBuilderApp:
         """Interface de Mapeamento de Colunas (Sprint 1)."""
         st.header("🛠️ Configuração de Dados")
         df = get_state("temp_df")
-        
+        schema = get_state("temp_schema")
+
         if df is not None:
-            mapping = render_column_mapper(df)
-            
+            mapping = render_column_mapper(df, schema=schema)
+
             st.markdown("---")
             if st.button("Finalizar e Validar Dados", type="primary", use_container_width=True):
-                # 1. Renomeação (Task 2)
-                df_renomeado = self.data_service.rename_columns(df, mapping)
-                
-                # 2. Tipagem (Task 1)
-                tipos_alvo = {
-                    v: ColumnType.NUMERIC if v == "Valor" else ColumnType.DATETIME 
-                    for k, v in mapping.items() if v in ["Valor", "Data"]
+                _tipo_map = {
+                    "Numérico": ColumnType.NUMERIC,
+                    "Data/Hora": ColumnType.DATETIME,
+                    "Categoria": ColumnType.CATEGORICAL,
+                    "Texto": ColumnType.TEXT,
                 }
-                df_final = self.data_service.validate_and_cast_types(df_renomeado, tipos_alvo)
-                
-                # 3. Criar análise
+                tipos_alvo = {k: _tipo_map[v] for k, v in mapping.items() if v in _tipo_map}
+                df_final = self.data_service.validate_and_cast_types(df, tipos_alvo)
+
+                # Criar análise e gerar schema a partir do DataFrame já tipado
                 name = get_state("pending_upload_name")
                 analysis = self.analysis_service.create_analysis(name)
-                
-                # --- O AJUSTE VITAL ESTÁ AQUI ---
-                # Importamos e geramos o Schema para habilitar a barra de gráficos
+
                 from domain.entities import DataSchema
                 analysis.data_schema = DataSchema.from_polars(df_final)
-                
-                # 4. Salvar dados no cache e persistir a análise com o novo schema
+
+                # Salvar dados no cache e persistir a análise com o novo schema
                 self.data_service.store_data(analysis.id, df_final)
-                self.analysis_service.save_current_analysis() 
-                
-                # 5. Limpeza de estado e retorno ao Dashboard
+                self.analysis_service.save_current_analysis()
+
+                # Limpeza de estado e retorno ao Dashboard
                 set_state("show_column_mapper", False)
                 set_state("temp_df", None)
+                set_state("temp_schema", None)
                 st.success("Dados validados! Os gráficos foram liberados.")
                 st.rerun()
 
@@ -476,6 +434,7 @@ class DashboardBuilderApp:
             )
             
             set_state("temp_df", df)
+            set_state("temp_schema", schema)
             set_state("show_column_mapper", True)
             set_state("pending_upload_name", name)
             set_state("pending_file_name", uploaded_file.name)
@@ -495,10 +454,10 @@ class DashboardBuilderApp:
 
     def _start_visualization_config(self, viz_type: VisualizationType) -> None:
         """Start configuration for a new visualization."""
-        set_state("configuring_new_viz", viz_type)
+        set_state("configuring_new_viz", viz_type)  
 
     def _render_config_dialog(self) -> None:
-        """Render the configuration dialog for a new visualization."""
+        """Renderiza o diálogo para criar uma NOVA visualização (Sprint 2)."""
         viz_type = get_state("configuring_new_viz")
         current_analysis = self.analysis_service.get_current_analysis()
 
@@ -509,11 +468,21 @@ class DashboardBuilderApp:
 
         from presentation.widgets import render_visualization_config_dialog
 
-        config = render_visualization_config_dialog(
+        def on_save(config):
+            # Esta função cria a visualização com a nova config (incluindo y_columns como lista)
+            self._create_visualization_with_config(viz_type, config)
+            set_state("configuring_new_viz", None)
+            st.rerun()
+
+        def on_cancel():
+            set_state("configuring_new_viz", None)
+            st.rerun()
+
+        render_visualization_config_dialog(
             viz_type=viz_type,
             data_schema=current_analysis.data_schema,
-            on_save=lambda cfg: self._create_visualization_with_config(viz_type, cfg),
-            on_cancel=self._cancel_config,
+            on_save=on_save,
+            on_cancel=on_cancel,
             is_new=True,
         )
 

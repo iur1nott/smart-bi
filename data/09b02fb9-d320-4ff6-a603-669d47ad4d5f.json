@@ -1,0 +1,206 @@
+{
+  "id": "09b02fb9-d320-4ff6-a603-669d47ad4d5f",
+  "name": "Planilha Pok\u00e9mon para Projeto de Dados",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "ID",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Nome",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 2",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Total",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "HP",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Attack",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Defense",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Atk",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Def",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Speed",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Gera\u00e7\u00e3o",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Lend\u00e1rio",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Cor",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Taxa de Captura",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 25,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "9f5e0363-d9ac-4069-a221-bd2bca239d56",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "8d2dee7f-77dc-4fd6-8698-fbaddcd1e8b4",
+          "config": {
+            "visualization_type": "column_chart",
+            "title": "ID por Tipo 1",
+            "x_column": "Tipo 1",
+            "y_column": null,
+            "y_columns": [
+              "ID"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "count",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "63cb1387-e0d8-4298-a748-0bbc99b8ab6c",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "ID por Tipo 1",
+            "x_column": "Tipo 1",
+            "y_column": null,
+            "y_columns": [
+              "ID"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "count",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-04-13T12:32:19.395796",
+      "updated_at": "2026-04-13T12:33:20.689759"
+    }
+  ],
+  "created_at": "2026-04-13T12:32:19.395760",
+  "updated_at": "2026-04-13T12:32:19.395800",
+  "file_path": null
+}

@@ -33,6 +33,7 @@ class VisualizationType(Enum):
     AREA_CHART = "area_chart"
     TABLE = "table"
     METRIC_CARD = "metric_card"
+    COLUMN_CHART = "column_chart"
     HEATMAP = "heatmap"
     BOX_PLOT = "box_plot"
 
@@ -95,8 +96,6 @@ class DataSchema:
         Cria um DataSchema automaticamente a partir de um DataFrame Polars.
         Mapeia os tipos do Polars para o ColumnType do sistema.
         """
-        from .entities import Column # Import local para evitar circular import se necessário
-        
         new_columns = []
         for col_name in df.columns:
             dtype = df.schema[col_name]
@@ -155,6 +154,8 @@ class DataSchema:
         )
 
 
+from typing import List, Union, Optional, Dict, Any
+
 @dataclass
 class VisualizationConfig:
     """Configuration for a visualization component."""
@@ -163,11 +164,13 @@ class VisualizationConfig:
     title: str = ""
     x_column: Optional[str] = None
     y_column: Optional[str] = None
+    y_columns: List[str] = field(default_factory=list)
     color_column: Optional[str] = None
     size_column: Optional[str] = None
-    aggregation: str = "sum"  # sum, mean, count, min, max
+    aggregation: str = "sum"
     show_legend: bool = True
     show_grid: bool = True
+    show_values: bool = False
     color_scheme: str = "default"
     custom_options: Dict[str, Any] = field(default_factory=dict)
 
@@ -178,11 +181,13 @@ class VisualizationConfig:
             "title": self.title,
             "x_column": self.x_column,
             "y_column": self.y_column,
+            "y_columns": self.y_columns,
             "color_column": self.color_column,
             "size_column": self.size_column,
             "aggregation": self.aggregation,
             "show_legend": self.show_legend,
             "show_grid": self.show_grid,
+            "show_values": self.show_values,
             "color_scheme": self.color_scheme,
             "custom_options": self.custom_options,
         }
@@ -195,11 +200,13 @@ class VisualizationConfig:
             title=data.get("title", ""),
             x_column=data.get("x_column"),
             y_column=data.get("y_column"),
+            y_columns=data.get("y_columns", []),
             color_column=data.get("color_column"),
             size_column=data.get("size_column"),
             aggregation=data.get("aggregation", "sum"),
             show_legend=data.get("show_legend", True),
             show_grid=data.get("show_grid", True),
+            show_values=data.get("show_values", False),
             color_scheme=data.get("color_scheme", "default"),
             custom_options=data.get("custom_options", {}),
         )
@@ -488,17 +495,3 @@ class UserSession:
                 },
             ),
         )
-    @classmethod
-    def from_polars(cls, df: pl.DataFrame) -> "DataSchema":
-        """Gera automaticamente o schema a partir de um DataFrame Polars."""
-        columns = []
-        for col_name in df.columns:
-            dtype = df.schema[col_name]
-            if dtype in [pl.Float64, pl.Int64, pl.Int32]:
-                col_type = ColumnType.NUMERIC
-            elif dtype in [pl.Date, pl.Datetime]:
-                col_type = ColumnType.DATETIME
-            else:
-                col_type = ColumnType.CATEGORICAL
-            columns.append(DataColumn(name=col_name, type=col_type))
-        return cls(columns=columns)

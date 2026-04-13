@@ -13,6 +13,19 @@ from domain.entities import (
     VisualizationType,
 )
 
+# ── Constantes de UI compartilhadas ──────────────────────────────────────────
+_AGG_OPTIONS: dict = {
+    "sum":   "Soma",
+    "mean":  "Média",
+    "count": "Contagem",
+    "min":   "Mínimo",
+    "max":   "Máximo",
+}
+
+_COLOR_SCHEMES: list = [
+    "default", "pastel", "dark", "vivid", "safe", "d3", "set1", "set2"
+]
+
 
 def render_widget_palette(
     data_schema: Optional[DataSchema], on_add_visualization: Callable
@@ -25,16 +38,17 @@ def render_widget_palette(
         return
 
     chart_types = [
-        ("📊 Bar Chart", VisualizationType.BAR_CHART),
-        ("📈 Line Chart", VisualizationType.LINE_CHART),
-        ("🥧 Pie Chart", VisualizationType.PIE_CHART),
-        ("📉 Area Chart", VisualizationType.AREA_CHART),
-        ("⚬ Scatter Plot", VisualizationType.SCATTER_PLOT),
-        ("▊ Histogram", VisualizationType.HISTOGRAM),
-        ("📦 Box Plot", VisualizationType.BOX_PLOT),
-        ("🔥 Heatmap", VisualizationType.HEATMAP),
-        ("📋 Table", VisualizationType.TABLE),
-        ("💳 Metric Card", VisualizationType.METRIC_CARD),
+        ("📊 Gráfico de Colunas", VisualizationType.COLUMN_CHART),
+        ("📉 Barras Horizontais",  VisualizationType.BAR_CHART),
+        ("📈 Linha",              VisualizationType.LINE_CHART),
+        ("🥧 Pizza",              VisualizationType.PIE_CHART),
+        ("🏔 Área",               VisualizationType.AREA_CHART),
+        ("⚬ Dispersão",           VisualizationType.SCATTER_PLOT),
+        ("▊ Histograma",          VisualizationType.HISTOGRAM),
+        ("📦 Box Plot",           VisualizationType.BOX_PLOT),
+        ("🔥 Mapa de Calor",      VisualizationType.HEATMAP),
+        ("📋 Tabela",             VisualizationType.TABLE),
+        ("💳 Cartão de Métrica",  VisualizationType.METRIC_CARD),
     ]
 
     for label, viz_type in chart_types:
@@ -102,19 +116,14 @@ def render_visualization_config_dialog(
             title, all_cols, numeric_cols, categorical_cols, existing_config
         )
 
-    elif viz_type == VisualizationType.BAR_CHART:
-        config = _configure_bar_chart_ui(
-            title, all_cols, numeric_cols, categorical_cols, existing_config
+    elif viz_type in (VisualizationType.COLUMN_CHART, VisualizationType.BAR_CHART):
+        config = _configure_bar_column_ui(
+            title, viz_type, all_cols, numeric_cols, categorical_cols, existing_config
         )
 
     elif viz_type == VisualizationType.LINE_CHART:
         config = _configure_line_chart_ui(
-            title,
-            all_cols,
-            numeric_cols,
-            categorical_cols,
-            datetime_cols,
-            existing_config,
+            title, all_cols, numeric_cols, categorical_cols, datetime_cols, existing_config,
         )
 
     elif viz_type == VisualizationType.AREA_CHART:
@@ -284,119 +293,152 @@ def _configure_pie_chart_ui(
         y_column = None
         st.warning("⚠️ No numeric columns for values")
 
-    # Aggregation
     col1, col2 = st.columns(2)
     with col1:
-        aggregations = ["sum", "mean", "count"]
+        _pie_agg = {"sum": "Soma", "mean": "Média", "count": "Contagem"}
         default_agg = existing.aggregation if existing else "sum"
-        default_agg_idx = (
-            aggregations.index(default_agg) if default_agg in aggregations else 0
-        )
         aggregation = st.selectbox(
-            "Aggregation", aggregations, index=default_agg_idx, key="pie_agg"
+            "📐 Agregação",
+            options=list(_pie_agg.keys()),
+            index=list(_pie_agg.keys()).index(default_agg) if default_agg in _pie_agg else 0,
+            format_func=lambda k: _pie_agg[k],
+            key="pie_agg",
         )
-
     with col2:
-        show_legend = st.checkbox(
-            "Show Legend",
-            value=existing.show_legend if existing else True,
-            key="pie_legend",
-        )
+        default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
+        color_scheme = st.selectbox("🎨 Paleta", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="pie_scheme")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        show_values = st.checkbox("Mostrar valores", value=existing.show_values if existing else False, key="pie_showvals")
+    with col4:
+        show_legend = st.checkbox("Legenda", value=existing.show_legend if existing else True, key="pie_legend")
 
     return VisualizationConfig(
         visualization_type=VisualizationType.PIE_CHART,
-        title=title if title else f"{x_column} Distribution",
+        title=title if title else f"Distribuição de {x_column}",
         x_column=x_column,
         y_column=y_column,
         aggregation=aggregation,
+        color_scheme=color_scheme,
+        show_values=show_values,
         show_legend=show_legend,
     )
 
 
-def _configure_bar_chart_ui(
+def _configure_bar_column_ui(
     title: str,
+    viz_type: VisualizationType,
     all_cols: List[str],
     numeric_cols: List[str],
     categorical_cols: List[str],
     existing: Optional[VisualizationConfig],
 ) -> VisualizationConfig:
-    """Configure bar chart visualization."""
-    st.markdown("**📊 Bar Chart Configuration**")
+    """UI unificada para Gráfico de Colunas (vertical) e Barras Horizontais."""
+    pfx = viz_type.value  # chave única por tipo
+    is_column = viz_type == VisualizationType.COLUMN_CHART
+    label = "Gráfico de Colunas" if is_column else "Barras Horizontais"
+    icon = "📊" if is_column else "📉"
+    st.markdown(f"**{icon} Configuração — {label}**")
 
-    # X-Axis (Categories)
+    # Categoria (eixo X para colunas, eixo Y para barras horizontais)
     x_cols = categorical_cols if categorical_cols else all_cols
     default_x_idx = 0
     if existing and existing.x_column in x_cols:
         default_x_idx = x_cols.index(existing.x_column)
-
     x_column = st.selectbox(
-        "📊 X-Axis (Categories)",
+        "📋 Categoria",
         x_cols,
         index=default_x_idx,
-        key="bar_x_select",
-        help="Categories for the x-axis",
+        key=f"{pfx}_x_select",
     )
 
-    # Y-Axis (Values)
+    # Métricas (Y)
     if numeric_cols:
-        default_y_idx = 0
-        if existing and existing.y_column in numeric_cols:
-            default_y_idx = numeric_cols.index(existing.y_column)
-
-        y_column = st.selectbox(
-            "📈 Y-Axis (Values)",
-            numeric_cols,
-            index=default_y_idx,
-            key="bar_y_select",
-            help="Numeric values for the y-axis",
+        default_y = (
+            existing.y_columns
+            if existing and existing.y_columns
+            else [numeric_cols[0]]
+        )
+        y_columns = st.multiselect(
+            "📈 Métricas (Eixo de Valor)",
+            options=numeric_cols,
+            default=[c for c in default_y if c in numeric_cols],
+            key=f"{pfx}_y_select",
         )
     else:
-        y_column = None
-        st.warning("⚠️ No numeric columns available")
+        y_columns = []
+        st.warning("⚠️ Nenhuma coluna numérica disponível")
 
-    # Aggregation
     col1, col2 = st.columns(2)
-
     with col1:
-        aggregations = ["sum", "mean", "count", "min", "max"]
         default_agg = existing.aggregation if existing else "sum"
-        default_agg_idx = (
-            aggregations.index(default_agg) if default_agg in aggregations else 0
-        )
         aggregation = st.selectbox(
-            "Aggregation", aggregations, index=default_agg_idx, key="bar_agg"
+            "📐 Agregação",
+            options=list(_AGG_OPTIONS.keys()),
+            index=list(_AGG_OPTIONS.keys()).index(default_agg)
+            if default_agg in _AGG_OPTIONS else 0,
+            format_func=lambda k: _AGG_OPTIONS[k],
+            key=f"{pfx}_agg",
         )
-
     with col2:
-        # Color by
-        color_options = [None] + all_cols
-        default_color_idx = 0
-        if existing and existing.color_column:
-            if existing.color_column in all_cols:
-                default_color_idx = color_options.index(existing.color_column)
-
+        color_opts = [None] + categorical_cols
+        default_color = 0
+        if existing and existing.color_column and existing.color_column in categorical_cols:
+            default_color = color_opts.index(existing.color_column)
         color_column = st.selectbox(
-            "🎨 Color by (Optional)",
-            color_options,
-            index=default_color_idx,
-            key="bar_color",
-            help="Group bars by this column",
+            "🎨 Agrupar por",
+            color_opts,
+            index=default_color,
+            key=f"{pfx}_color",
+            help="Divide as barras por categoria (melhor com uma única métrica)",
         )
 
-    show_legend = st.checkbox(
-        "Show Legend",
-        value=existing.show_legend if existing else True,
-        key="bar_legend",
+    # Paleta de cores
+    default_scheme = (
+        existing.color_scheme
+        if existing and existing.color_scheme in _COLOR_SCHEMES
+        else "default"
+    )
+    color_scheme = st.selectbox(
+        "🎨 Paleta de cores",
+        _COLOR_SCHEMES,
+        index=_COLOR_SCHEMES.index(default_scheme),
+        key=f"{pfx}_scheme",
     )
 
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        show_values = st.checkbox(
+            "Mostrar valores",
+            value=existing.show_values if existing else False,
+            key=f"{pfx}_showvals",
+        )
+    with col4:
+        show_legend = st.checkbox(
+            "Legenda",
+            value=existing.show_legend if existing else True,
+            key=f"{pfx}_legend",
+        )
+    with col5:
+        show_grid = st.checkbox(
+            "Grade",
+            value=existing.show_grid if existing else True,
+            key=f"{pfx}_grid",
+        )
+
+    auto_title = f"{', '.join(y_columns)} por {x_column}" if y_columns else ""
     return VisualizationConfig(
-        visualization_type=VisualizationType.BAR_CHART,
-        title=title if title else f"{y_column} by {x_column}",
+        visualization_type=viz_type,
+        title=title if title else auto_title,
         x_column=x_column,
-        y_column=y_column,
+        y_columns=y_columns,
         color_column=color_column,
         aggregation=aggregation,
+        color_scheme=color_scheme,
+        show_values=show_values,
         show_legend=show_legend,
+        show_grid=show_grid,
     )
 
 
@@ -449,13 +491,13 @@ def _configure_line_chart_ui(
     col1, col2 = st.columns(2)
 
     with col1:
-        aggregations = ["sum", "mean", "count", "min", "max"]
         default_agg = existing.aggregation if existing else "sum"
-        default_agg_idx = (
-            aggregations.index(default_agg) if default_agg in aggregations else 0
-        )
         aggregation = st.selectbox(
-            "Aggregation", aggregations, index=default_agg_idx, key="line_agg"
+            "📐 Agregação",
+            options=list(_AGG_OPTIONS.keys()),
+            index=list(_AGG_OPTIONS.keys()).index(default_agg) if default_agg in _AGG_OPTIONS else 0,
+            format_func=lambda k: _AGG_OPTIONS[k],
+            key="line_agg",
         )
 
     with col2:
@@ -464,26 +506,35 @@ def _configure_line_chart_ui(
         if existing and existing.color_column:
             if existing.color_column in all_cols:
                 default_color_idx = color_options.index(existing.color_column)
-
         color_column = st.selectbox(
-            "🎨 Group by (Optional)",
+            "🎨 Agrupar por",
             color_options,
             index=default_color_idx,
             key="line_color",
-            help="Create separate lines for each group",
+            help="Cria linhas separadas por grupo",
         )
 
-    show_grid = st.checkbox(
-        "Show Grid", value=existing.show_grid if existing else True, key="line_grid"
-    )
+    default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
+    color_scheme = st.selectbox("🎨 Paleta de cores", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="line_scheme")
+
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        show_values = st.checkbox("Mostrar valores", value=existing.show_values if existing else False, key="line_showvals")
+    with col4:
+        show_legend = st.checkbox("Legenda", value=existing.show_legend if existing else True, key="line_legend")
+    with col5:
+        show_grid = st.checkbox("Grade", value=existing.show_grid if existing else True, key="line_grid")
 
     return VisualizationConfig(
         visualization_type=VisualizationType.LINE_CHART,
-        title=title if title else f"{y_column} over {x_column}",
+        title=title if title else f"{y_column} por {x_column}",
         x_column=x_column,
         y_column=y_column,
         color_column=color_column,
         aggregation=aggregation,
+        color_scheme=color_scheme,
+        show_values=show_values,
+        show_legend=show_legend,
         show_grid=show_grid,
     )
 
@@ -519,22 +570,48 @@ def _configure_area_chart_ui(
     else:
         y_column = None
 
-    color_options = [None] + all_cols
-    default_color_idx = 0
-    if existing and existing.color_column:
-        if existing.color_column in all_cols:
-            default_color_idx = color_options.index(existing.color_column)
-    color_column = st.selectbox(
-        "🎨 Group by", color_options, index=default_color_idx, key="area_color"
-    )
+    col1, col2 = st.columns(2)
+    with col1:
+        default_agg = existing.aggregation if existing else "sum"
+        aggregation = st.selectbox(
+            "📐 Agregação",
+            options=list(_AGG_OPTIONS.keys()),
+            index=list(_AGG_OPTIONS.keys()).index(default_agg) if default_agg in _AGG_OPTIONS else 0,
+            format_func=lambda k: _AGG_OPTIONS[k],
+            key="area_agg",
+        )
+    with col2:
+        color_options = [None] + all_cols
+        default_color_idx = 0
+        if existing and existing.color_column:
+            if existing.color_column in all_cols:
+                default_color_idx = color_options.index(existing.color_column)
+        color_column = st.selectbox(
+            "🎨 Agrupar por", color_options, index=default_color_idx, key="area_color"
+        )
+
+    default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
+    color_scheme = st.selectbox("🎨 Paleta de cores", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="area_scheme")
+
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        show_values = st.checkbox("Mostrar valores", value=existing.show_values if existing else False, key="area_showvals")
+    with col4:
+        show_legend = st.checkbox("Legenda", value=existing.show_legend if existing else True, key="area_legend")
+    with col5:
+        show_grid = st.checkbox("Grade", value=existing.show_grid if existing else True, key="area_grid")
 
     return VisualizationConfig(
         visualization_type=VisualizationType.AREA_CHART,
-        title=title if title else f"{y_column} over {x_column}",
+        title=title if title else f"{y_column} por {x_column}",
         x_column=x_column,
         y_column=y_column,
         color_column=color_column,
-        aggregation=existing.aggregation if existing else "sum",
+        aggregation=aggregation,
+        color_scheme=color_scheme,
+        show_values=show_values,
+        show_legend=show_legend,
+        show_grid=show_grid,
     )
 
 
@@ -804,43 +881,52 @@ def render_data_preview(data_schema: DataSchema, df: pl.DataFrame) -> None:
 
 import streamlit as st
 
-def render_column_mapper(df):
+# Mapeia ColumnType detectado → rótulo exibido na tela de mapeamento
+_COLUMN_TYPE_TO_LABEL = {
+    ColumnType.NUMERIC: "Numérico",
+    ColumnType.DATETIME: "Data/Hora",
+    ColumnType.CATEGORICAL: "Categoria",
+    ColumnType.TEXT: "Texto",
+    ColumnType.BOOLEAN: "Numérico",
+    ColumnType.UNKNOWN: "Texto",
+}
+
+_MAPPER_OPTIONS = ["Numérico", "Data/Hora", "Categoria", "Texto"]
+
+
+def render_column_mapper(df, schema=None):
     """
-    Interface para o usuário mapear as colunas do arquivo para o padrão do sistema.
-    Inclui lógica de detecção automática baseada no nome da coluna.
+    Interface para o usuário confirmar/ajustar o tipo de cada coluna.
+    Usa os tipos já detectados pelo DataService como sugestão padrão.
+    Retorna {nome_original: label_escolhido} para todas as colunas.
     """
     st.subheader("🛠️ Mapeamento de Colunas")
-    st.info("O sistema tentou identificar as colunas automaticamente. Ajuste se necessário:")
-    
+    st.info("Tipos detectados automaticamente pelo sistema. Ajuste se necessário.")
+
+    # Monta índice {col_name: ColumnType} a partir do schema pré-detectado (se disponível)
+    detected: dict = {}
+    if schema is not None:
+        for col_obj in schema.columns:
+            detected[col_obj.name] = col_obj.data_type
+
     mapping = {}
-    # Opções do selectbox: [0] Ignorar, [1] Data, [2] Valor, [3] Categoria, [4] Regional
-    options = ["Ignorar", "Data", "Valor", "Categoria", "Regional"]
-    
-    colunas_arquivo = df.columns
-    cols = st.columns(2)
-    
-    for i, col in enumerate(colunas_arquivo):
-        with cols[i % 2]:
-            # --- LÓGICA DE DETECÇÃO AUTOMÁTICA ---
-            col_lower = col.lower()
-            index_sugerido = 0 # Padrão: Ignorar
-            
-            if any(key in col_lower for key in ["data", "dt_", "emissao", "vencimento"]):
-                index_sugerido = 1 # Sugere "Data"
-            elif any(key in col_lower for key in ["valor", "vlr", "preço", "total", "faturamento", "receita"]):
-                index_sugerido = 2 # Sugere "Valor"
-            elif any(key in col_lower for key in ["categoria", "tipo", "grupo", "especialidade"]):
-                index_sugerido = 3 # Sugere "Categoria"
-            # ---------------------------------------
+    cols_ui = st.columns(2)
+
+    for i, col in enumerate(df.columns):
+        with cols_ui[i % 2]:
+            # Determina o label padrão: usa o tipo detectado pelo DataService
+            col_type = detected.get(col, ColumnType.UNKNOWN)
+            label_detectado = _COLUMN_TYPE_TO_LABEL.get(col_type, "Texto")
+            index_sugerido = _MAPPER_OPTIONS.index(label_detectado)
 
             choice = st.selectbox(
-                f"Coluna original: **{col}**", 
-                options, 
-                index=index_sugerido, # Aplica a sugestão aqui
-                key=f"map_{col}"
+                col,
+                _MAPPER_OPTIONS,
+                index=index_sugerido,
+                key=f"map_{col}",
+                help=f"Tipo detectado automaticamente: **{label_detectado}**",
             )
-            
-            if choice != "Ignorar":
-                mapping[col] = choice
-                
+
+            mapping[col] = choice
+
     return mapping

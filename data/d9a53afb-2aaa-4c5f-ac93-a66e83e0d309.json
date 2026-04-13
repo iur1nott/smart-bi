@@ -1,0 +1,147 @@
+{
+  "id": "d9a53afb-2aaa-4c5f-ac93-a66e83e0d309",
+  "name": "Planilha Pok\u00e9mon para Teste de Projeto",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "Treinador",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Pok\u00e9mon",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Categoria",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Valor",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Data",
+        "data_type": "datetime",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Categoria_1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Valor_1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Regional",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 10,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "a5aa404e-d558-4fd6-be83-4216b51a600e",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "a58c3613-60ae-4799-a4f0-a6ff7829b6a3",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "Categoria, Valor by Pok\u00e9mon",
+            "x_column": "Pok\u00e9mon",
+            "y_columns": [
+              "Categoria",
+              "Valor"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "9f8cb2bc-f117-46bd-9963-334dccd8b8ed",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "Valor by Pok\u00e9mon",
+            "x_column": "Pok\u00e9mon",
+            "y_columns": [
+              "Valor"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-03-29T14:01:01.245734",
+      "updated_at": "2026-03-29T14:02:09.692419"
+    }
+  ],
+  "created_at": "2026-03-29T14:01:01.245701",
+  "updated_at": "2026-03-29T14:01:01.245738",
+  "file_path": null
+}
