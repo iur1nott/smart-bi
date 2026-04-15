@@ -1,0 +1,122 @@
+{
+  "id": "7b9bbf5e-eba7-452c-8923-b303ff4335ea",
+  "name": "Atividades Pr\u00e1ticas_Te\u00f3ricas (Avalia\u00e7\u00e3o)",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "T326 - Ci\u00eancia de Dados",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__2",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__3",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__4",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 32,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "3352af15-763e-451a-9069-c477e83bfcfd",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "570bd487-d93b-475e-9c12-6ce1bae8105a",
+          "config": {
+            "visualization_type": "column_chart",
+            "title": "",
+            "x_column": "__UNNAMED__1",
+            "y_column": null,
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "37cb2bf3-2b42-46db-80e1-4001b3abca08",
+          "config": {
+            "visualization_type": "area_chart",
+            "title": "None por T326 - Ci\u00eancia de Dados",
+            "x_column": "T326 - Ci\u00eancia de Dados",
+            "y_column": null,
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-04-15T09:22:51.730828",
+      "updated_at": "2026-04-15T09:24:14.121294"
+    }
+  ],
+  "created_at": "2026-04-15T09:22:51.730817",
+  "updated_at": "2026-04-15T09:22:51.730830",
+  "file_path": null
+}

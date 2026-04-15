@@ -1,0 +1,65 @@
+{
+  "id": "f3393987-cac8-49a6-973a-e9bee953c06e",
+  "name": "Atividades Pr\u00e1ticas_Te\u00f3ricas (Avalia\u00e7\u00e3o)",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "T326 - Ci\u00eancia de Dados",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__2",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__3",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "__UNNAMED__4",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 32,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "2bac5e60-a26c-4a46-a0c5-bdd736cce3ab",
+      "title": "Slide 1",
+      "visualizations": [],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-04-15T09:18:19.266417",
+      "updated_at": "2026-04-15T09:18:19.266417"
+    }
+  ],
+  "created_at": "2026-04-15T09:18:19.266388",
+  "updated_at": "2026-04-15T09:18:19.266420",
+  "file_path": null
+}

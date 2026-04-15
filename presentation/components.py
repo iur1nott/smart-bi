@@ -53,7 +53,7 @@ def render_settings_modal(current_settings: Dict[str, Any], on_save: Callable) -
         )
 
     st.markdown("---")
-    if st.button("💾 Save Settings", type="primary"):
+    if st.button("💾 Save Settings", type="primary", key="save_settings_btn"):
         new_settings = {
             "theme": theme,
             "grid_visible": grid_visible,
@@ -142,7 +142,12 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
 
     st.markdown("---")
 
-    if st.button("📤 Export", type="primary", use_container_width=True):
+    if st.button(
+        "📤 Export",
+        type="primary",
+        use_container_width=True,
+        key="dialog_export_btn"
+    ):
         with st.spinner("Generating export..."):
             export_options = {
                 "format": export_format.lower(),
@@ -203,7 +208,12 @@ def render_toolbar(
             on_next()
 
     with col5:
-        if st.button("📤 Export", type="primary", use_container_width=True):
+        if st.button(
+            "📤 Export",
+            type="primary",
+            use_container_width=True,
+            key="toolbar_export_btn"
+        ):
             on_export()
 
 
@@ -261,9 +271,18 @@ def render_confirmation_dialog(
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("✓ Confirm", type="primary", use_container_width=True):
+        if st.button(
+            "✓ Confirm",
+            type="primary",
+            use_container_width=True,
+            key="confirm_btn"
+        ):
             on_confirm()
 
     with col2:
-        if st.button("✗ Cancel", use_container_width=True):
+        if st.button(
+            "✗ Cancel",
+            use_container_width=True,
+            key="cancel_btn"
+        ):
             on_cancel()
