@@ -1,5 +1,6 @@
 """
-Canvas Component - Main slide editing area with visualization rendering.
+Canvas Component - Main dashboard editing area with visualization rendering.
+Updated for new schema with dashboards and visualizations.
 """
 
 from typing import Optional, List, Callable, Any, Dict
@@ -7,56 +8,35 @@ import streamlit as st
 import polars as pl
 
 from domain.entities import (
-    Slide,
     Visualization,
     VisualizationType,
     VisualizationConfig,
-    DataSchema,
+    FileSheet,
 )
 
 
 def render_canvas(
-    slide: Optional[Slide],
+    visualizations: List[Visualization],
     data_service: Any,
-    analysis_id: str,
-    on_update_visualization: Callable[[str, str, VisualizationConfig], None],
-    on_delete_visualization: Callable[[str, str], None],
-    on_add_comment: Callable[[str, str, str], None],
-    data_schema: Optional[DataSchema] = None,
+    sheet_id: str,
+    on_update_visualization: Callable[[str, VisualizationConfig], None],
+    on_delete_visualization: Callable[[str], None],
+    on_add_comment: Callable[[str, str], None],
+    sheet: Optional[FileSheet] = None,
 ) -> None:
     """
-    Render the main canvas for slide editing.
+    Render the main canvas for dashboard editing.
 
     Args:
-        slide: Current slide to render
+        visualizations: List of visualizations to render
         data_service: Service for data operations
-        analysis_id: ID of the current analysis
+        sheet_id: ID of the current sheet for data
         on_update_visualization: Callback when visualization is updated
         on_delete_visualization: Callback when visualization is deleted
         on_add_comment: Callback when comment is added
-        data_schema: Schema of the loaded data
+        sheet: Current sheet metadata
     """
-    if not slide:
-        st.markdown(
-            """
-            <div style='
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 400px;
-                text-align: center;
-            '>
-                <div style='font-size: 64px; margin-bottom: 20px;'>📊</div>
-                <h3 style='color: #1E293B; margin: 0;'>Nenhum slide selecionado</h3>
-                <p style='color: #64748B; margin-top: 10px;'>Selecione ou crie um slide para começar</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
-
-    df = data_service.get_cached_data(analysis_id)
+    df = data_service.get_cached_sheet(sheet_id)
 
     if df is None:
         st.markdown(
@@ -77,7 +57,7 @@ def render_canvas(
         )
         return
 
-    # Render slide header
+    # Render dashboard header
     st.markdown(
         f"""
         <div style='
@@ -90,14 +70,14 @@ def render_canvas(
             align-items: center;
             justify-content: space-between;
         '>
-            <h3 style='margin: 0; color: #1E293B;'>📄 {slide.title}</h3>
-            <span style='color: #64748B; font-size: 14px;'>{len(slide.visualizations)} visualizações</span>
+            <h3 style='margin: 0; color: #1E293B;'>📊 Dashboard</h3>
+            <span style='color: #64748B; font-size: 14px;'>{len(visualizations)} visualizações</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if not slide.visualizations:
+    if not visualizations:
         st.markdown(
             """
             <div style='
@@ -109,7 +89,7 @@ def render_canvas(
                 background: #F8FAFC;
             '>
                 <div style='font-size: 48px; margin-bottom: 16px;'>📈</div>
-                <h3 style='color: #475569; margin: 0;'>Slide Vazio</h3>
+                <h3 style='color: #475569; margin: 0;'>Dashboard Vazio</h3>
                 <p style='color: #94A3B8; margin-top: 8px;'>Adicione visualizações usando o painel à direita</p>
             </div>
             """,
@@ -120,17 +100,16 @@ def render_canvas(
 
         chart_factory = ChartFactory()
 
-        for idx, viz in enumerate(slide.visualizations):
+        for idx, viz in enumerate(visualizations):
             render_visualization(
                 viz=viz,
                 df=df,
                 chart_factory=chart_factory,
                 index=idx,
-                slide_id=slide.id,
                 on_update=on_update_visualization,
                 on_delete=on_delete_visualization,
                 on_add_comment=on_add_comment,
-                data_schema=data_schema,
+                sheet=sheet,
             )
 
 
@@ -139,11 +118,10 @@ def render_visualization(
     df: pl.DataFrame,
     chart_factory: Any,
     index: int,
-    slide_id: str,
-    on_update: Callable[[str, str, VisualizationConfig], None],
-    on_delete: Callable[[str, str], None],
-    on_add_comment: Callable[[str, str, str], None],
-    data_schema: Optional[DataSchema] = None,
+    on_update: Callable[[str, VisualizationConfig], None],
+    on_delete: Callable[[str], None],
+    on_add_comment: Callable[[str, str], None],
+    sheet: Optional[FileSheet] = None,
 ) -> None:
     """Render a single visualization with modern card design."""
 
@@ -166,32 +144,69 @@ def render_visualization(
     col1, col2, col3, col4 = st.columns([5, 1, 1, 1])
 
     with col1:
-        title = viz.config.title if viz.config and viz.config.title else f"Visualização {index + 1}"
+        title = (
+            viz.config.title
+            if viz.config and viz.config.title
+            else f"Visualização {index + 1}"
+        )
         st.markdown(f"**{title}**")
 
     with col2:
-        if st.button("✏️", key=f"edit_{viz.id}", help="Editar visualização"):
-            st.session_state.editing_viz_id = viz.id
+        if st.button("✏️", key=f"edit_{viz.viz_id}", help="Editar visualização"):
+            st.session_state.editing_viz_id = viz.viz_id
 
     with col3:
-        if st.button("💬", key=f"comment_btn_{viz.id}", help="Adicionar comentário"):
-            st.session_state.commenting_viz_id = viz.id
+        if st.button(
+            "💬", key=f"comment_btn_{viz.viz_id}", help="Adicionar comentário"
+        ):
+            st.session_state.commenting_viz_id = viz.viz_id
 
     with col4:
-        if st.button("🗑️", key=f"delete_{viz.id}", help="Excluir visualização"):
-            on_delete(slide_id, viz.id)
+        if st.button("🗑️", key=f"delete_{viz.viz_id}", help="Excluir visualização"):
+            on_delete(viz.viz_id)
             st.rerun()
 
     # Render the visualization
     if viz.config:
         try:
-            if viz.config.visualization_type == VisualizationType.TABLE:
+            if viz.viz_type == "table":
                 render_table(viz, df)
-            elif viz.config.visualization_type == VisualizationType.METRIC_CARD:
+            elif viz.viz_type == "metric_card":
                 render_metric_card(viz, df)
             else:
-                fig = chart_factory.create_chart(df, viz.config)
-                st.plotly_chart(fig, use_container_width=True, key=f"chart_{viz.id}")
+                # Convert viz_type string to VisualizationType enum for chart factory
+                from domain.entities import VisualizationType
+
+                config_with_type = VisualizationConfig(
+                    title=viz.config.title,
+                    x_column=viz.config.x_column,
+                    y_column=viz.config.y_column,
+                    color_column=viz.config.color_column,
+                    size_column=viz.config.size_column,
+                    aggregation=viz.config.aggregation,
+                    show_legend=viz.config.show_legend,
+                    show_grid=viz.config.show_grid,
+                    color_scheme=viz.config.color_scheme,
+                    custom_options=viz.config.custom_options,
+                )
+                # Map viz_type to VisualizationType
+                type_map = {
+                    "bar": VisualizationType.BAR,
+                    "line": VisualizationType.LINE,
+                    "pie": VisualizationType.PIE,
+                    "area": VisualizationType.AREA,
+                    "scatter": VisualizationType.SCATTER,
+                    "histogram": VisualizationType.HISTOGRAM,
+                    "box": VisualizationType.BOX,
+                    "heatmap": VisualizationType.HEATMAP,
+                }
+                # Create a modified config with the correct type
+                from domain.entities import VisualizationConfig as VC
+                from domain.entities import VisualizationType as VT
+
+                # For now, render charts directly without using chart_factory
+                # to avoid enum compatibility issues
+                render_chart(viz, df)
         except Exception as e:
             st.error(f"Erro ao renderizar: {str(e)}")
 
@@ -200,6 +215,157 @@ def render_visualization(
         st.info(f"💬 {viz.comment}")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_chart(viz: Visualization, df: pl.DataFrame) -> None:
+    """Render a chart visualization using Plotly."""
+    import plotly.express as px
+    import plotly.graph_objects as go
+
+    config = viz.config
+    if not config:
+        return
+
+    try:
+        # Prepare data
+        chart_df = df
+
+        # Apply aggregation if needed
+        if config.x_column and config.y_column and config.aggregation:
+            agg_col = pl.col(config.y_column)
+
+            if config.aggregation == "sum":
+                agg_expr = agg_col.sum()
+            elif config.aggregation == "mean":
+                agg_expr = agg_col.mean()
+            elif config.aggregation == "count":
+                agg_expr = agg_col.count()
+            elif config.aggregation == "min":
+                agg_expr = agg_col.min()
+            elif config.aggregation == "max":
+                agg_expr = agg_col.max()
+            elif config.aggregation == "median":
+                agg_expr = agg_col.median()
+            else:
+                agg_expr = agg_col.sum()
+
+            group_cols = [config.x_column]
+            if config.color_column and config.color_column != config.x_column:
+                group_cols.append(config.color_column)
+
+            chart_df = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
+
+        # Convert to pandas for Plotly
+        pdf = chart_df.to_pandas()
+
+        # Create chart based on type
+        if viz.viz_type == "bar":
+            if config.color_column:
+                fig = px.bar(
+                    pdf,
+                    x=config.x_column,
+                    y=config.y_column,
+                    color=config.color_column,
+                    title=config.title,
+                )
+            else:
+                fig = px.bar(
+                    pdf, x=config.x_column, y=config.y_column, title=config.title
+                )
+
+        elif viz.viz_type == "line":
+            if config.color_column:
+                fig = px.line(
+                    pdf,
+                    x=config.x_column,
+                    y=config.y_column,
+                    color=config.color_column,
+                    title=config.title,
+                )
+            else:
+                fig = px.line(
+                    pdf, x=config.x_column, y=config.y_column, title=config.title
+                )
+
+        elif viz.viz_type == "pie":
+            fig = px.pie(
+                pdf, names=config.x_column, values=config.y_column, title=config.title
+            )
+
+        elif viz.viz_type == "area":
+            if config.color_column:
+                fig = px.area(
+                    pdf,
+                    x=config.x_column,
+                    y=config.y_column,
+                    color=config.color_column,
+                    title=config.title,
+                )
+            else:
+                fig = px.area(
+                    pdf, x=config.x_column, y=config.y_column, title=config.title
+                )
+
+        elif viz.viz_type == "scatter":
+            if config.color_column:
+                fig = px.scatter(
+                    pdf,
+                    x=config.x_column,
+                    y=config.y_column,
+                    color=config.color_column,
+                    title=config.title,
+                )
+            else:
+                fig = px.scatter(
+                    pdf, x=config.x_column, y=config.y_column, title=config.title
+                )
+
+        elif viz.viz_type == "histogram":
+            fig = px.histogram(pdf, x=config.x_column, title=config.title)
+
+        elif viz.viz_type == "box":
+            if config.color_column:
+                fig = px.box(
+                    pdf,
+                    x=config.x_column,
+                    y=config.y_column,
+                    color=config.color_column,
+                    title=config.title,
+                )
+            else:
+                fig = px.box(pdf, y=config.y_column, title=config.title)
+
+        elif viz.viz_type == "heatmap":
+            # Create pivot table for heatmap
+            pivot = pdf.pivot(
+                index=config.x_column,
+                columns=config.color_column,
+                values=config.y_column,
+            )
+            fig = px.imshow(pivot, title=config.title)
+
+        else:
+            # Default to bar chart
+            fig = px.bar(pdf, x=config.x_column, y=config.y_column, title=config.title)
+
+        # Update layout
+        fig.update_layout(
+            showlegend=config.show_legend,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+
+        if config.show_grid:
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+        else:
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=False)
+
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{viz.viz_id}")
+
+    except Exception as e:
+        st.error(f"Erro ao criar gráfico: {str(e)}")
 
 
 def render_table(viz: Visualization, df: pl.DataFrame) -> None:
@@ -288,44 +454,3 @@ def render_metric_card(viz: Visualization, df: pl.DataFrame) -> None:
         )
     except Exception as e:
         st.error(f"Erro ao calcular métrica: {str(e)}")
-
-
-def render_slide_navigator(
-    slides: List[Slide],
-    current_slide_id: Optional[str],
-    on_slide_change: Callable[[str], None],
-    on_add_slide: Callable[[], None],
-    on_delete_slide: Callable[[str], None],
-) -> None:
-    """Render the slide navigation bar."""
-    st.markdown("---")
-
-    col1, col2, col3 = st.columns([1, 3, 1])
-
-    with col1:
-        if st.button("➕ Novo Slide", use_container_width=True):
-            on_add_slide()
-            st.rerun()
-
-    with col2:
-        if slides:
-            cols = st.columns(min(len(slides), 8))
-            for i, slide in enumerate(slides):
-                with cols[i % 8]:
-                    is_current = slide.id == current_slide_id
-                    title = slide.title[:10] + "..." if len(slide.title) > 10 else slide.title
-
-                    if st.button(
-                        f"{i + 1}. {title}",
-                        key=f"nav_slide_{slide.id}",
-                        use_container_width=True,
-                        type="primary" if is_current else "secondary",
-                    ):
-                        on_slide_change(slide.id)
-                        st.rerun()
-
-    with col3:
-        if len(slides) > 1:
-            if st.button("🗑️ Excluir", use_container_width=True):
-                on_delete_slide(current_slide_id)
-                st.rerun()

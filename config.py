@@ -1,20 +1,92 @@
 """
-Configuration Module - Centralized application configuration.
+Configuration Module - Centralized application configuration for Streamlit Cloud.
 
 This module contains all configurable variables, constants, and settings
-used throughout the application. Developers should modify this file
-or set environment variables to customize the application behavior.
+used throughout the application. Designed for Streamlit Community Cloud deployment.
+
+Configuration Priority:
+1. Streamlit secrets (st.secrets) - for Streamlit Cloud deployment
+2. Environment variables - for local development or Docker deployment
+3. Default values - fallback defaults
 
 Usage:
     from config import settings
 
-    database_url = settings.DATABASE_URL
-    session_timeout = settings.SESSION_TIMEOUT_HOURS
+    database_url = settings.database.url
+    session_timeout = settings.session.timeout_hours
 """
 
 import os
+import streamlit as st
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+
+
+def _get_secret(key: str, section: str = None, default: Any = None) -> Any:
+    """
+    Get configuration value from Streamlit secrets or environment variables.
+
+    Priority:
+    1. st.secrets[section][key] if section provided
+    2. st.secrets[key] directly if no section
+    3. os.getenv(key.upper()) or os.getenv(key)
+    4. default value
+
+    Args:
+        key: Configuration key name
+        section: Optional section name in secrets.toml
+        default: Default value if not found
+
+    Returns:
+        Configuration value
+    """
+    # Try Streamlit secrets first
+    try:
+        if section:
+            if section in st.secrets and key in st.secrets[section]:
+                return st.secrets[section][key]
+        else:
+            if key in st.secrets:
+                return st.secrets[key]
+    except Exception:
+        # st.secrets not available (e.g., before st.set_page_config)
+        pass
+
+    # Try environment variables
+    env_key = key.upper()
+    env_value = os.getenv(env_key) or os.getenv(key)
+    if env_value is not None:
+        return env_value
+
+    return default
+
+
+def _get_int_secret(key: str, section: str = None, default: int = 0) -> int:
+    """Get integer configuration value."""
+    value = _get_secret(key, section, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_float_secret(key: str, section: str = None, default: float = 0.0) -> float:
+    """Get float configuration value."""
+    value = _get_secret(key, section, default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_bool_secret(key: str, section: str = None, default: bool = False) -> bool:
+    """Get boolean configuration value."""
+    value = _get_secret(key, section, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    return default
 
 
 @dataclass
@@ -22,29 +94,30 @@ class DatabaseSettings:
     """
     Database connection and pool settings.
 
-    Environment Variables:
-        DATABASE_URL: Full PostgreSQL connection string
-        DB_POOL_SIZE: Number of connections to keep in the pool
-        DB_MAX_OVERFLOW: Maximum overflow connections
-        DB_POOL_RECYCLE: Recycle connections after N seconds
-        SQL_ECHO: Echo SQL statements (for debugging)
+    Secrets (secrets.toml):
+        [database]
+        url = "postgresql://..."
+        pool_size = 5
+        max_overflow = 10
+        pool_recycle = 3600
     """
 
     url: str = field(
-        default_factory=lambda: os.getenv(
-            "DATABASE_URL",
-            "postgresql://postgres:Pst|Grs@localhost:5432/postgres",
+        default_factory=lambda: _get_secret(
+            "url", "database", "postgresql://postgres:postgres@localhost:5432/smartxl"
         )
     )
-    pool_size: int = field(default_factory=lambda: int(os.getenv("DB_POOL_SIZE", "5")))
+    pool_size: int = field(
+        default_factory=lambda: _get_int_secret("pool_size", "database", 5)
+    )
     max_overflow: int = field(
-        default_factory=lambda: int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        default_factory=lambda: _get_int_secret("max_overflow", "database", 10)
     )
     pool_recycle: int = field(
-        default_factory=lambda: int(os.getenv("DB_POOL_RECYCLE", "3600"))
+        default_factory=lambda: _get_int_secret("pool_recycle", "database", 3600)
     )
     echo_sql: bool = field(
-        default_factory=lambda: os.getenv("SQL_ECHO", "false").lower() == "true"
+        default_factory=lambda: _get_bool_secret("echo_sql", "database", False)
     )
 
     # Connection timeout in seconds
@@ -52,28 +125,84 @@ class DatabaseSettings:
 
 
 @dataclass
+class S3StorageSettings:
+    """
+    S3/Supabase storage settings for file management.
+
+    Secrets (secrets.toml):
+        [storage]
+        endpoint_url = "https://..."
+        access_key = "your-access-key"
+        secret_key = "your-secret-key"
+        bucket_name = "smartxl-files"
+        region = "us-east-1"
+        use_ssl = true
+        presigned_url_expiration = 3600
+    """
+
+    endpoint_url: str = field(
+        default_factory=lambda: _get_secret("endpoint_url", "storage", "")
+    )
+    access_key: str = field(
+        default_factory=lambda: _get_secret("access_key", "storage", "")
+    )
+    secret_key: str = field(
+        default_factory=lambda: _get_secret("secret_key", "storage", "")
+    )
+    bucket_name: str = field(
+        default_factory=lambda: _get_secret("bucket_name", "storage", "smartxl-files")
+    )
+    region: str = field(
+        default_factory=lambda: _get_secret("region", "storage", "us-east-1")
+    )
+    use_ssl: bool = field(
+        default_factory=lambda: _get_bool_secret("use_ssl", "storage", True)
+    )
+
+    # File path prefix within bucket
+    files_prefix: str = "files"
+
+    # Presigned URL expiration in seconds
+    presigned_url_expiration: int = field(
+        default_factory=lambda: _get_int_secret(
+            "presigned_url_expiration", "storage", 3600
+        )
+    )
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if S3 is properly configured."""
+        return bool(self.access_key and self.secret_key and self.bucket_name)
+
+
+@dataclass
 class JWTSettings:
     """
     JWT authentication settings.
 
-    Environment Variables:
-        JWT_SECRET_KEY: Secret key for signing JWT tokens (CHANGE IN PRODUCTION!)
-        JWT_ALGORITHM: Token signing algorithm
-        JWT_ACCESS_TOKEN_EXPIRE_MINUTES: Access token lifetime in minutes
-        JWT_REFRESH_TOKEN_EXPIRE_DAYS: Refresh token lifetime in days
+    Secrets (secrets.toml):
+        [jwt]
+        secret_key = "your-secure-random-string"
+        algorithm = "HS256"
+        access_token_expire_minutes = 60
+        refresh_token_expire_days = 7
     """
 
     secret_key: str = field(
-        default_factory=lambda: os.getenv(
-            "JWT_SECRET_KEY", "your-super-secret-key-change-in-production"
+        default_factory=lambda: _get_secret(
+            "secret_key", "jwt", "your-super-secret-key-change-in-production"
         )
     )
-    algorithm: str = field(default_factory=lambda: os.getenv("JWT_ALGORITHM", "HS256"))
+    algorithm: str = field(
+        default_factory=lambda: _get_secret("algorithm", "jwt", "HS256")
+    )
     access_token_expire_minutes: int = field(
-        default_factory=lambda: int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+        default_factory=lambda: _get_int_secret(
+            "access_token_expire_minutes", "jwt", 60
+        )
     )
     refresh_token_expire_days: int = field(
-        default_factory=lambda: int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+        default_factory=lambda: _get_int_secret("refresh_token_expire_days", "jwt", 7)
     )
 
 
@@ -82,16 +211,17 @@ class SessionSettings:
     """
     User session settings.
 
-    Environment Variables:
-        SESSION_TIMEOUT_HOURS: Session timeout in hours
-        SESSION_CLEANUP_INTERVAL_HOURS: How often to clean up expired sessions
+    Secrets (secrets.toml):
+        [session]
+        timeout_hours = 24
+        cleanup_interval_hours = 1
     """
 
     timeout_hours: int = field(
-        default_factory=lambda: int(os.getenv("SESSION_TIMEOUT_HOURS", "24"))
+        default_factory=lambda: _get_int_secret("timeout_hours", "session", 24)
     )
     cleanup_interval_hours: int = field(
-        default_factory=lambda: int(os.getenv("SESSION_CLEANUP_INTERVAL_HOURS", "1"))
+        default_factory=lambda: _get_int_secret("cleanup_interval_hours", "session", 1)
     )
 
 
@@ -100,26 +230,21 @@ class ApplicationSettings:
     """
     General application settings.
 
-    Environment Variables:
-        APP_NAME: Application name
-        APP_VERSION: Application version
-        DEBUG_MODE: Enable debug mode
-        APP_PORT: Port to run the application on
-        APP_HOST: Host to bind to
+    Secrets (secrets.toml):
+        [app]
+        name = "SmartXL"
+        version = "2.0.0"
+        debug = false
     """
 
-    name: str = field(
-        default_factory=lambda: os.getenv("APP_NAME", "Dashboard Builder")
-    )
-    version: str = field(default_factory=lambda: os.getenv("APP_VERSION", "1.0.0"))
-    debug: bool = field(
-        default_factory=lambda: os.getenv("DEBUG_MODE", "false").lower() == "true"
-    )
-    port: int = field(default_factory=lambda: int(os.getenv("APP_PORT", "8501")))
-    host: str = field(default_factory=lambda: os.getenv("APP_HOST", "0.0.0.0"))
+    name: str = field(default_factory=lambda: _get_secret("name", "app", "SmartXL"))
+    version: str = field(default_factory=lambda: _get_secret("version", "app", "2.0.0"))
+    debug: bool = field(default_factory=lambda: _get_bool_secret("debug", "app", False))
+    port: int = field(default_factory=lambda: _get_int_secret("port", "app", 8501))
+    host: str = field(default_factory=lambda: _get_secret("host", "app", "0.0.0.0"))
 
     # Streamlit-specific settings
-    page_title: str = "Dashboard Builder"
+    page_title: str = "SmartXL - Dashboard Builder"
     page_icon: str = "📊"
     layout: str = "wide"
     initial_sidebar_state: str = "expanded"
@@ -130,36 +255,38 @@ class DataSettings:
     """
     Data processing settings.
 
-    Environment Variables:
-        MAX_FILE_SIZE_MB: Maximum upload file size in MB
-        MAX_ROWS_PREVIEW: Maximum rows to show in preview
-        SAMPLE_VALUES_COUNT: Number of sample values to show per column
-        MAX_UNIQUE_VALUES_DISPLAY: Maximum unique values to display in filters
-        DATETIME_DETECTION_THRESHOLD: Threshold for datetime detection (0.0-1.0)
-        CATEGORICAL_THRESHOLD: Unique ratio threshold for categorical detection
-        TEXT_THRESHOLD: Unique ratio threshold for text detection
+    Secrets (secrets.toml):
+        [data]
+        max_file_size_mb = 50
+        max_rows_preview = 100
+        sample_values_count = 10
+        max_unique_values_display = 100
     """
 
     max_file_size_mb: int = field(
-        default_factory=lambda: int(os.getenv("MAX_FILE_SIZE_MB", "50"))
+        default_factory=lambda: _get_int_secret("max_file_size_mb", "data", 50)
     )
     max_rows_preview: int = field(
-        default_factory=lambda: int(os.getenv("MAX_ROWS_PREVIEW", "100"))
+        default_factory=lambda: _get_int_secret("max_rows_preview", "data", 100)
     )
     sample_values_count: int = field(
-        default_factory=lambda: int(os.getenv("SAMPLE_VALUES_COUNT", "10"))
+        default_factory=lambda: _get_int_secret("sample_values_count", "data", 10)
     )
     max_unique_values_display: int = field(
-        default_factory=lambda: int(os.getenv("MAX_UNIQUE_VALUES_DISPLAY", "100"))
+        default_factory=lambda: _get_int_secret(
+            "max_unique_values_display", "data", 100
+        )
     )
     datetime_detection_threshold: float = field(
-        default_factory=lambda: float(os.getenv("DATETIME_DETECTION_THRESHOLD", "0.7"))
+        default_factory=lambda: _get_float_secret(
+            "datetime_detection_threshold", "data", 0.7
+        )
     )
     categorical_threshold: float = field(
-        default_factory=lambda: float(os.getenv("CATEGORICAL_THRESHOLD", "0.5"))
+        default_factory=lambda: _get_float_secret("categorical_threshold", "data", 0.5)
     )
     text_threshold: float = field(
-        default_factory=lambda: float(os.getenv("TEXT_THRESHOLD", "0.8"))
+        default_factory=lambda: _get_float_secret("text_threshold", "data", 0.8)
     )
 
     # Allowed file extensions
@@ -170,27 +297,19 @@ class DataSettings:
 class ExportSettings:
     """
     Export settings for PDF, HTML, and LaTeX generation.
-
-    Environment Variables:
-        EXPORT_OUTPUT_DIR: Directory to save exported files
-        EXPORT_PAPER_SIZE: Default paper size (a4, letter, legal)
-        EXPORT_ORIENTATION: Default orientation (portrait, landscape)
-        EXPORT_INCLUDE_COMMENTS: Include comments in exports by default
     """
 
     output_dir: str = field(
-        default_factory=lambda: os.getenv("EXPORT_OUTPUT_DIR", "./exports")
+        default_factory=lambda: _get_secret("output_dir", "export", "./exports")
     )
     default_paper_size: str = field(
-        default_factory=lambda: os.getenv("EXPORT_PAPER_SIZE", "a4")
+        default_factory=lambda: _get_secret("default_paper_size", "export", "a4")
     )
     default_orientation: str = field(
-        default_factory=lambda: os.getenv("EXPORT_ORIENTATION", "portrait")
+        default_factory=lambda: _get_secret("default_orientation", "export", "portrait")
     )
     include_comments_default: bool = field(
-        default_factory=lambda: (
-            os.getenv("EXPORT_INCLUDE_COMMENTS", "true").lower() == "true"
-        )
+        default_factory=lambda: _get_bool_secret("include_comments", "export", True)
     )
 
     # Available paper sizes
@@ -203,43 +322,31 @@ class ExportSettings:
 class LoggingSettings:
     """
     Logging configuration.
-
-    Environment Variables:
-        LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        LOG_FORMAT: Log message format
-        LOG_FILE: Optional log file path
     """
 
-    level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
+    level: str = field(default_factory=lambda: _get_secret("level", "logging", "INFO"))
     format: str = field(
-        default_factory=lambda: os.getenv(
-            "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        default_factory=lambda: _get_secret(
+            "format", "logging", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
     )
-    file: str = field(default_factory=lambda: os.getenv("LOG_FILE", ""))
+    file: str = field(default_factory=lambda: _get_secret("file", "logging", ""))
 
 
 @dataclass
 class ChartSettings:
     """
     Chart visualization settings.
-
-    Environment Variables:
-        CHART_DEFAULT_COLOR_SCHEME: Default color scheme for charts
-        CHART_DEFAULT_WIDTH: Default chart width in pixels
-        CHART_DEFAULT_HEIGHT: Default chart height in pixels
-        CHART_SHOW_LEGEND: Show legend by default
-        CHART_SHOW_GRID: Show grid by default
     """
 
     default_color_scheme: str = field(
-        default_factory=lambda: os.getenv("CHART_DEFAULT_COLOR_SCHEME", "default")
+        default_factory=lambda: _get_secret("default_color_scheme", "chart", "default")
     )
     default_width: int = field(
-        default_factory=lambda: int(os.getenv("CHART_DEFAULT_WIDTH", "400"))
+        default_factory=lambda: _get_int_secret("default_width", "chart", 400)
     )
     default_height: int = field(
-        default_factory=lambda: int(os.getenv("CHART_DEFAULT_HEIGHT", "300"))
+        default_factory=lambda: _get_int_secret("default_height", "chart", 300)
     )
     show_legend_default: bool = True
     show_grid_default: bool = True
@@ -255,28 +362,25 @@ class SecuritySettings:
     """
     Security-related settings.
 
-    Environment Variables:
-        PASSWORD_MIN_LENGTH: Minimum password length
-        PASSWORD_REQUIRE_UPPERCASE: Require uppercase in passwords
-        PASSWORD_REQUIRE_LOWERCASE: Require lowercase in passwords
-        PASSWORD_REQUIRE_DIGIT: Require digit in passwords
-        PASSWORD_REQUIRE_SPECIAL: Require special character in passwords
-        MAX_LOGIN_ATTEMPTS: Maximum login attempts before lockout
-        LOGIN_LOCKOUT_MINUTES: Lockout duration in minutes
+    Secrets (secrets.toml):
+        [security]
+        password_min_length = 8
+        max_login_attempts = 5
+        login_lockout_minutes = 15
     """
 
     password_min_length: int = field(
-        default_factory=lambda: int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
+        default_factory=lambda: _get_int_secret("password_min_length", "security", 8)
     )
     password_require_uppercase: bool = True
     password_require_lowercase: bool = True
     password_require_digit: bool = True
     password_require_special: bool = False
     max_login_attempts: int = field(
-        default_factory=lambda: int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
+        default_factory=lambda: _get_int_secret("max_login_attempts", "security", 5)
     )
     login_lockout_minutes: int = field(
-        default_factory=lambda: int(os.getenv("LOGIN_LOCKOUT_MINUTES", "15"))
+        default_factory=lambda: _get_int_secret("login_lockout_minutes", "security", 15)
     )
 
 
@@ -296,9 +400,13 @@ class Settings:
 
         # Access session timeout
         timeout = settings.session.timeout_hours
+
+        # Access S3 settings
+        bucket = settings.storage.bucket_name
     """
 
     database: DatabaseSettings = field(default_factory=DatabaseSettings)
+    storage: S3StorageSettings = field(default_factory=S3StorageSettings)
     jwt: JWTSettings = field(default_factory=JWTSettings)
     session: SessionSettings = field(default_factory=SessionSettings)
     app: ApplicationSettings = field(default_factory=ApplicationSettings)
@@ -318,8 +426,14 @@ class Settings:
         if self.jwt.secret_key == "your-super-secret-key-change-in-production":
             if not self.app.debug:
                 print(
-                    "WARNING: Using default JWT secret key! Set JWT_SECRET_KEY environment variable."
+                    "WARNING: Using default JWT secret key! Set jwt.secret_key in secrets.toml."
                 )
+
+        # Warn if S3 is not configured
+        if not self.storage.is_configured:
+            print(
+                "WARNING: S3 storage is not fully configured. File uploads may not work."
+            )
 
         # Validate thresholds are in valid range
         if not 0 <= self.data.datetime_detection_threshold <= 1:
@@ -351,6 +465,11 @@ class Settings:
                 "max_overflow": self.database.max_overflow,
                 "pool_recycle": self.database.pool_recycle,
             },
+            "storage": {
+                "bucket_name": self.storage.bucket_name,
+                "region": self.storage.region,
+                "is_configured": self.storage.is_configured,
+            },
             "jwt": {
                 "algorithm": self.jwt.algorithm,
                 "access_token_expire_minutes": self.jwt.access_token_expire_minutes,
@@ -376,24 +495,49 @@ class Settings:
         }
 
 
-# Global settings instance
-settings = Settings()
+# Global settings instance - lazy initialization
+_settings_instance: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """
+    Get the global settings instance.
+    Creates a new instance if none exists.
+
+    Returns:
+        Settings instance
+    """
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
+
+
+# For backward compatibility - settings property
+class _SettingsProxy:
+    """Proxy class for lazy settings initialization."""
+
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+
+settings = _SettingsProxy()
 
 
 # Convenience functions for backward compatibility
 def get_database_url() -> str:
     """Get the database URL."""
-    return settings.database.url
+    return get_settings().database.url
 
 
 def get_jwt_secret_key() -> str:
     """Get the JWT secret key."""
-    return settings.jwt.secret_key
+    return get_settings().jwt.secret_key
 
 
 def get_session_timeout_hours() -> int:
     """Get the session timeout in hours."""
-    return settings.session.timeout_hours
+    return get_settings().session.timeout_hours
 
 
 # Constants that are not configurable (business logic constants)
@@ -403,29 +547,50 @@ class Constants:
     These are hardcoded values that represent business rules or technical limits.
     """
 
-    # Visualization types
+    # Visualization types (maps to viz_type in database)
     VISUALIZATION_TYPES = [
-        "bar_chart",
-        "line_chart",
-        "pie_chart",
-        "area_chart",
-        "scatter_plot",
+        "bar",
+        "line",
+        "pie",
+        "area",
+        "scatter",
         "histogram",
-        "box_plot",
+        "box",
         "heatmap",
         "table",
         "metric_card",
     ]
 
-    # Column types
+    # Column types (maps to data_type in sheet_columns)
     COLUMN_TYPES = [
-        "numeric",
-        "categorical",
-        "datetime",
-        "text",
-        "boolean",
-        "unknown",
+        "Int64",
+        "Float64",
+        "String",
+        "Boolean",
+        "Date",
+        "Datetime",
+        "Time",
     ]
+
+    # Polars to DB type mapping
+    POLARS_TO_DB_TYPE = {
+        "Int8": "Int64",
+        "Int16": "Int64",
+        "Int32": "Int64",
+        "Int64": "Int64",
+        "UInt8": "Int64",
+        "UInt16": "Int64",
+        "UInt32": "Int64",
+        "UInt64": "Int64",
+        "Float32": "Float64",
+        "Float64": "Float64",
+        "String": "String",
+        "Utf8": "String",
+        "Boolean": "Boolean",
+        "Date": "Date",
+        "Datetime": "Datetime",
+        "Time": "Time",
+    }
 
     # Export formats
     EXPORT_FORMATS = ["pdf", "html", "latex"]

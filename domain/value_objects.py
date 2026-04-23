@@ -122,7 +122,9 @@ class AggregationConfig:
             "last",
         ]
         if self.aggregation_function not in valid_functions:
-            raise ValueError(f"Invalid aggregation function: {self.aggregation_function}")
+            raise ValueError(
+                f"Invalid aggregation function: {self.aggregation_function}"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""

@@ -1,16 +1,17 @@
 """
 Login Page - Authentication UI for user login and registration.
+Updated for new schema.
 """
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 import streamlit as st
 
-from domain.entities import User, UserSession
+from domain.entities import User
 from use_cases.auth_service import AuthService, AuthResult
 
 
 def render_login_page(
-    auth_service: AuthService, on_login_success: Callable[[User, UserSession], None]
+    auth_service: AuthService, on_login_success: Callable[[User, Any], None]
 ) -> None:
     """
     Render the login/registration page.
@@ -56,7 +57,7 @@ def render_login_page(
         st.markdown(
             """
             <div class="login-header">
-                <h1>📊 Dashboard Builder</h1>
+                <h1>📊 SmartXL</h1>
                 <p>Crie dashboards profissionais a partir dos seus dados</p>
             </div>
             """,
@@ -74,7 +75,7 @@ def render_login_page(
 
 
 def render_login_form(
-    auth_service: AuthService, on_login_success: Callable[[User, UserSession], None]
+    auth_service: AuthService, on_login_success: Callable[[User, Any], None]
 ) -> None:
     """Render the login form."""
     st.markdown("### Entrar na sua conta")
@@ -91,14 +92,16 @@ def render_login_form(
 
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-    if st.button("Entrar", type="primary", key="login_submit", use_container_width=True):
+    if st.button(
+        "Entrar", type="primary", key="login_submit", use_container_width=True
+    ):
         if not username or not password:
             st.error("Por favor, preencha todos os campos")
             return
 
         result = auth_service.login(username, password)
 
-        if result.success and result.user and result.session:
+        if result.success and result.user:
             st.success(f"Bem-vindo, {result.user.username}!")
             on_login_success(result.user, result.session)
             st.rerun()
@@ -107,7 +110,7 @@ def render_login_form(
 
 
 def render_register_form(
-    auth_service: AuthService, on_login_success: Callable[[User, UserSession], None]
+    auth_service: AuthService, on_login_success: Callable[[User, Any], None]
 ) -> None:
     """Render the registration form."""
     st.markdown("### Criar nova conta")
@@ -120,12 +123,6 @@ def render_register_form(
     )
 
     email = st.text_input("Email", placeholder="seu@email.com", key="register_email")
-
-    full_name = st.text_input(
-        "Nome completo (opcional)",
-        placeholder="Seu nome completo",
-        key="register_fullname",
-    )
 
     password = st.text_input(
         "Senha",
@@ -143,7 +140,9 @@ def render_register_form(
 
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-    if st.button("Criar Conta", type="primary", key="register_submit", use_container_width=True):
+    if st.button(
+        "Criar Conta", type="primary", key="register_submit", use_container_width=True
+    ):
         if not all([username, email, password, confirm_password]):
             st.error("Por favor, preencha todos os campos obrigatórios")
             return
@@ -157,10 +156,10 @@ def render_register_form(
             return
 
         result = auth_service.register(
-            username=username, email=email, password=password, full_name=full_name
+            username=username, email=email, password=password
         )
 
-        if result.success and result.user and result.session:
+        if result.success and result.user:
             st.success("Conta criada com sucesso!")
             on_login_success(result.user, result.session)
             st.rerun()
@@ -188,7 +187,7 @@ def render_user_menu(
             color: white;
             margin-bottom: 16px;
         '>
-            <div style='font-weight: 600; font-size: 16px;'>{user.full_name or user.username}</div>
+            <div style='font-weight: 600; font-size: 16px;'>{user.username}</div>
             <div style='font-size: 12px; opacity: 0.9;'>{user.email}</div>
         </div>
         """,

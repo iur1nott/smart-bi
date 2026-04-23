@@ -5,11 +5,12 @@ Provides database connection pooling and session handling using SQLAlchemy.
 
 from typing import Optional
 from contextlib import contextmanager
-import os
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import QueuePool
 import logging
+
+from config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,11 +35,9 @@ class Database:
 
         Args:
             database_url: PostgreSQL connection URL. If not provided,
-                         uses environment variable DATABASE_URL or defaults to localhost.
+                         uses the value from settings.
         """
-        self.database_url = database_url or os.getenv(
-            "DATABASE_URL", "postgresql://postgres:k4m1c4451@localhost:5432/postgres"
-        )
+        self.database_url = database_url or settings.database.url
         self._engine = None
         self._session_factory = None
         self._initialized = False
@@ -50,11 +49,11 @@ class Database:
             self._engine = create_engine(
                 self.database_url,
                 poolclass=QueuePool,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=settings.database.pool_size,
+                max_overflow=settings.database.max_overflow,
                 pool_pre_ping=True,
-                pool_recycle=3600,
-                echo=os.getenv("SQL_ECHO", "false").lower() == "true",
+                pool_recycle=settings.database.pool_recycle,
+                echo=settings.database.echo_sql,
             )
             self._configure_engine()
         return self._engine
@@ -115,7 +114,14 @@ class Database:
         Initialize the database by creating all tables.
         Should be called once at application startup.
         """
-        from .models import UserModel, AnalysisModel, SessionModel, DataFileModel
+        from .models import (
+            UserModel,
+            FileModel,
+            FileSheetModel,
+            SheetColumnModel,
+            DashboardModel,
+            VisualizationModel,
+        )
 
         Base.metadata.create_all(self.engine)
         self._initialized = True

@@ -1,6 +1,7 @@
 """
 Infrastructure Layer - External services and implementations.
 This layer handles persistence, external APIs, and technical implementations.
+Updated for new schema with files, dashboards, and visualizations.
 """
 
 from .database import (
@@ -12,17 +13,19 @@ from .database import (
 )
 from .models import (
     UserModel,
-    AnalysisModel,
-    SessionModel,
-    DataFileModel,
-    ExportJobModel,
+    FileModel,
+    FileSheetModel,
+    SheetColumnModel,
+    DashboardModel,
+    VisualizationModel,
 )
 from .repositories import (
     UserRepositoryImpl,
-    AnalysisRepositoryImpl,
-    SessionRepositoryImpl,
+    FileRepositoryImpl,
+    DashboardRepositoryImpl,
 )
 from .auth import JWTHandler, PasswordHandler, AuthToken
+from .storage import get_s3_client
 
 __all__ = [
     # Database
@@ -33,16 +36,19 @@ __all__ = [
     "reset_database",
     # Models
     "UserModel",
-    "AnalysisModel",
-    "SessionModel",
-    "DataFileModel",
-    "ExportJobModel",
+    "FileModel",
+    "FileSheetModel",
+    "SheetColumnModel",
+    "DashboardModel",
+    "VisualizationModel",
     # Repositories
     "UserRepositoryImpl",
-    "AnalysisRepositoryImpl",
-    "SessionRepositoryImpl",
+    "FileRepositoryImpl",
+    "DashboardRepositoryImpl",
     # Auth
     "JWTHandler",
     "PasswordHandler",
     "AuthToken",
+    # Storage
+    "get_s3_client",
 ]

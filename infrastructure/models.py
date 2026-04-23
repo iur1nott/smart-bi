@@ -1,6 +1,7 @@
 """
 Database Models - SQLAlchemy ORM models for PostgreSQL.
 These models map to database tables and handle persistence.
+Matches the schema defined in smartxl_db_creator.sql
 """
 
 from datetime import datetime
@@ -12,13 +13,12 @@ from sqlalchemy import (
     DateTime,
     Text,
     Integer,
-    LargeBinary,
+    BigInteger,
     ForeignKey,
     Index,
-    JSON,
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
 from .database import Base
@@ -32,255 +32,236 @@ class UserModel(Base):
 
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(100), default="")
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_admin = Column(Boolean, default=False, nullable=False)
-    settings = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String(50), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
-    last_login = Column(DateTime, nullable=True)
 
     # Relationships
-    analyses = relationship(
-        "AnalysisModel", back_populates="user", cascade="all, delete-orphan"
+    files = relationship(
+        "FileModel", back_populates="user", cascade="all, delete-orphan"
     )
-    sessions = relationship(
-        "SessionModel", back_populates="user", cascade="all, delete-orphan"
+    dashboards = relationship(
+        "DashboardModel", back_populates="user", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (
-        Index("ix_users_username_lower", username),
-        Index("ix_users_email_lower", email),
-    )
+    __table_args__ = (Index("idx_users_email", email),)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary."""
         return {
-            "id": str(self.id),
+            "user_id": str(self.user_id),
             "username": self.username,
             "email": self.email,
-            "full_name": self.full_name,
-            "is_active": self.is_active,
-            "is_admin": self.is_admin,
-            "settings": self.settings or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
         }
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, username='{self.username}')>"
+        return f"<User(user_id={self.user_id}, username='{self.username}')>"
 
 
-class AnalysisModel(Base):
+class FileModel(Base):
     """
-    SQLAlchemy model for Analysis entity.
-    Stores analysis configuration and metadata.
+    SQLAlchemy model for uploaded files.
+    Stores file metadata and S3 storage path.
     """
 
-    __tablename__ = "analyses"
+    __tablename__ = "files"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    file_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
     )
-    name = Column(String(200), nullable=False)
-    file_path = Column(String(500), default="")
-    data_schema = Column(JSON, nullable=True)
-    slides = Column(JSON, default=list)
-    settings = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    file_name = Column(Text, nullable=False)
+    storage_path = Column(Text, nullable=False)  # S3 path
+    file_size_kb = Column(BigInteger, nullable=False)
+    uploaded_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
 
     # Relationships
-    user = relationship("UserModel", back_populates="analyses")
-
-    __table_args__ = (
-        Index("ix_analyses_user_id", user_id),
-        Index("ix_analyses_updated_at", updated_at),
+    user = relationship("UserModel", back_populates="files")
+    sheets = relationship(
+        "FileSheetModel", back_populates="file", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (Index("idx_files_user_id", user_id),)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary."""
         return {
-            "id": str(self.id),
+            "file_id": str(self.file_id),
             "user_id": str(self.user_id),
-            "name": self.name,
-            "file_path": self.file_path,
-            "data_schema": self.data_schema,
-            "slides": self.slides or [],
-            "settings": self.settings or {},
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "file_name": self.file_name,
+            "storage_path": self.storage_path,
+            "file_size_kb": self.file_size_kb,
+            "uploaded_at": self.uploaded_at.isoformat() if self.uploaded_at else None,
         }
 
     def __repr__(self) -> str:
-        return f"<Analysis(id={self.id}, name='{self.name}', user_id={self.user_id})>"
+        return f"<File(file_id={self.file_id}, file_name='{self.file_name}')>"
 
 
-class SessionModel(Base):
+class FileSheetModel(Base):
     """
-    SQLAlchemy model for user sessions.
-    Stores session state for authenticated users.
+    SQLAlchemy model for sheets within Excel files.
+    Each uploaded file can have multiple sheets.
     """
 
-    __tablename__ = "sessions"
+    __tablename__ = "file_sheets"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    sheet_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    file_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("files.file_id", ondelete="CASCADE"),
+        nullable=False,
     )
-    token_hash = Column(String(64), unique=True, nullable=False, index=True)
-    session_data = Column(JSON, default=dict)
-    settings = Column(JSON, default=dict)
-    current_analysis_id = Column(UUID(as_uuid=True), nullable=True)
-    current_slide_id = Column(UUID(as_uuid=True), nullable=True)
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    last_activity = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sheet_name = Column(Text, nullable=False)
 
     # Relationships
-    user = relationship("UserModel", back_populates="sessions")
+    file = relationship("FileModel", back_populates="sheets")
+    columns = relationship(
+        "SheetColumnModel", back_populates="sheet", cascade="all, delete-orphan"
+    )
+    visualizations = relationship(
+        "VisualizationModel", back_populates="sheet", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("idx_file_sheets_file_id", file_id),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "sheet_id": str(self.sheet_id),
+            "file_id": str(self.file_id),
+            "sheet_name": self.sheet_name,
+        }
+
+    def __repr__(self) -> str:
+        return f"<FileSheet(sheet_id={self.sheet_id}, sheet_name='{self.sheet_name}')>"
+
+
+class SheetColumnModel(Base):
+    """
+    SQLAlchemy model for columns within sheets.
+    Stores column metadata and data types.
+    """
+
+    __tablename__ = "sheet_columns"
+
+    column_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sheet_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("file_sheets.sheet_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    column_name = Column(Text, nullable=False)
+    data_type = Column(String(20), nullable=False)  # Int64, Float64, String, etc.
+
+    # Relationships
+    sheet = relationship("FileSheetModel", back_populates="columns")
+
+    __table_args__ = (Index("idx_sheet_columns_sheet_id", sheet_id),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "column_id": str(self.column_id),
+            "sheet_id": str(self.sheet_id),
+            "column_name": self.column_name,
+            "data_type": self.data_type,
+        }
+
+    def __repr__(self) -> str:
+        return f"<SheetColumn(column_id={self.column_id}, column_name='{self.column_name}')>"
+
+
+class DashboardModel(Base):
+    """
+    SQLAlchemy model for dashboards.
+    A dashboard is a collection of visualizations from one or more sheets.
+    """
+
+    __tablename__ = "dashboards"
+
+    dashboard_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    # Relationships
+    user = relationship("UserModel", back_populates="dashboards")
+    visualizations = relationship(
+        "VisualizationModel", back_populates="dashboard", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("idx_dashboards_user_id", user_id),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "dashboard_id": str(self.dashboard_id),
+            "user_id": str(self.user_id),
+            "title": self.title,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def __repr__(self) -> str:
+        return f"<Dashboard(dashboard_id={self.dashboard_id}, title='{self.title}')>"
+
+
+class VisualizationModel(Base):
+    """
+    SQLAlchemy model for visualizations.
+    Stores visualization configuration as JSONB.
+    """
+
+    __tablename__ = "visualizations"
+
+    viz_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dashboard_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dashboards.dashboard_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sheet_id = Column(
+        UUID(as_uuid=True), ForeignKey("file_sheets.sheet_id"), nullable=False
+    )
+    viz_type = Column(String(50), nullable=False)  # bar, scatter, pie, etc.
+    config = Column(JSONB, nullable=False)  # Stores axis, colors, layout, etc.
+    created_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    # Relationships
+    dashboard = relationship("DashboardModel", back_populates="visualizations")
+    sheet = relationship("FileSheetModel", back_populates="visualizations")
 
     __table_args__ = (
-        Index("ix_sessions_user_id", user_id),
-        Index("ix_sessions_token_hash", token_hash),
-        Index("ix_sessions_expires_at", expires_at),
+        Index("idx_visualizations_config", config, postgresql_using="gin"),
     )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary."""
         return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "session_data": self.session_data or {},
-            "settings": self.settings or {},
-            "current_analysis_id": str(self.current_analysis_id)
-            if self.current_analysis_id
-            else None,
-            "current_slide_id": str(self.current_slide_id)
-            if self.current_slide_id
-            else None,
-            "ip_address": self.ip_address,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
-            "last_activity": self.last_activity.isoformat()
-            if self.last_activity
-            else None,
-        }
-
-    def is_expired(self) -> bool:
-        """Check if session has expired."""
-        return datetime.utcnow() > self.expires_at
-
-    def __repr__(self) -> str:
-        return f"<Session(id={self.id}, user_id={self.user_id})>"
-
-
-class DataFileModel(Base):
-    """
-    SQLAlchemy model for uploaded data files.
-    Stores file metadata and content for caching.
-    """
-
-    __tablename__ = "data_files"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    analysis_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("analyses.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    filename = Column(String(255), nullable=False)
-    file_size = Column(Integer, default=0)
-    file_content = Column(LargeBinary, nullable=True)
-    mime_type = Column(
-        String(100),
-        default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    __table_args__ = (
-        Index("ix_data_files_user_id", user_id),
-        Index("ix_data_files_analysis_id", analysis_id),
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert model to dictionary (without content)."""
-        return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "analysis_id": str(self.analysis_id),
-            "filename": self.filename,
-            "file_size": self.file_size,
-            "mime_type": self.mime_type,
+            "viz_id": str(self.viz_id),
+            "dashboard_id": str(self.dashboard_id),
+            "sheet_id": str(self.sheet_id),
+            "viz_type": self.viz_type,
+            "config": self.config or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
     def __repr__(self) -> str:
-        return f"<DataFile(id={self.id}, filename='{self.filename}')>"
-
-
-class ExportJobModel(Base):
-    """
-    SQLAlchemy model for export jobs.
-    Tracks export operations for analytics and caching.
-    """
-
-    __tablename__ = "export_jobs"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    analysis_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("analyses.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    format = Column(String(20), nullable=False)
-    options = Column(JSON, default=dict)
-    status = Column(String(20), default="pending", nullable=False)
-    file_path = Column(String(500), nullable=True)
-    error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    completed_at = Column(DateTime, nullable=True)
-
-    __table_args__ = (
-        Index("ix_export_jobs_user_id", user_id),
-        Index("ix_export_jobs_analysis_id", analysis_id),
-        Index("ix_export_jobs_status", status),
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert model to dictionary."""
-        return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "analysis_id": str(self.analysis_id),
-            "format": self.format,
-            "options": self.options or {},
-            "status": self.status,
-            "file_path": self.file_path,
-            "error_message": self.error_message,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
-        }
-
-    def __repr__(self) -> str:
-        return f"<ExportJob(id={self.id}, status='{self.status}')>"
+        return f"<Visualization(viz_id={self.viz_id}, viz_type='{self.viz_type}')>"

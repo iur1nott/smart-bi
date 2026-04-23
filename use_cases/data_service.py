@@ -1,6 +1,7 @@
 """
 Data Service - Handles data processing and transformation operations.
 Follows Single Responsibility Principle - only handles data operations.
+Updated to work with new file-based schema.
 """
 
 from typing import Dict, List, Any, Optional, Tuple
@@ -13,16 +14,16 @@ import streamlit as st
 
 from config import settings, Constants
 from domain.entities import (
-    Analysis,
-    DataSchema,
-    Column,
-    ColumnType,
+    Dashboard,
+    File,
+    FileSheet,
+    SheetColumn,
     Visualization,
     VisualizationConfig,
     VisualizationType,
-    Slide,
 )
 from domain.value_objects import FilterCondition, AggregationConfig
+from infrastructure.storage.s3_client import get_s3_client
 
 logger = logging.getLogger(__name__)
 
@@ -30,24 +31,30 @@ logger = logging.getLogger(__name__)
 class DataService:
     """
     Service responsible for data operations including:
-    - Loading and parsing XLSX files
+    - Loading and parsing XLSX files from S3
     - Schema inference and column type detection
     - Data filtering and aggregation
     - Data transformation for visualizations
-
-    Uses Streamlit session state for data caching to persist across reruns.
+    - Caching data in Streamlit session state
     """
 
     def __init__(self):
         """Initialize the data service."""
-        # Use session state for caching instead of instance variable
+        # Use session state for caching
         if "data_cache" not in st.session_state:
             st.session_state.data_cache = {}
+        if "sheet_cache" not in st.session_state:
+            st.session_state.sheet_cache = {}
 
     @property
     def _data_cache(self) -> Dict[str, pl.DataFrame]:
         """Get the data cache from session state."""
         return st.session_state.data_cache
+
+    @property
+    def _sheet_cache(self) -> Dict[str, pl.DataFrame]:
+        """Get the sheet cache from session state."""
+        return st.session_state.sheet_cache
 
     def _clean_duplicate_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -79,265 +86,167 @@ class DataService:
 
         return df
 
-    def load_excel_file(
-        self, file_path: str, analysis_id: str
-    ) -> Tuple[DataSchema, pl.DataFrame]:
-        """
-        Load an Excel file and return its schema and data.
-
-        Args:
-            file_path: Path to the Excel file
-            analysis_id: ID of the analysis for caching
-
-        Returns:
-            Tuple of DataSchema and Polars DataFrame
-        """
-        # Read the Excel file using Polars
-        df = pl.read_excel(file_path)
-
-        # Clean duplicate columns
-        df = self._clean_duplicate_columns(df)
-
-        # Cache the dataframe in session state
-        st.session_state.data_cache[analysis_id] = df
-
-        # Generate schema
-        schema = self._infer_schema(df, file_path)
-
-        return schema, df
-
-    def load_excel_from_bytes(
-        self, file_bytes: bytes, file_name: str, analysis_id: str
-    ) -> Tuple[DataSchema, pl.DataFrame]:
-        """
-        Load an Excel file from bytes and return its schema and data.
-
-        Args:
-            file_bytes: Raw bytes of the Excel file
-            file_name: Original file name
-            analysis_id: ID of the analysis for caching
-
-        Returns:
-            Tuple of DataSchema and Polars DataFrame
-        """
-        # Write bytes to temporary file
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
-
-        try:
-            df = pl.read_excel(tmp_path)
-            # Clean duplicate columns
-            df = self._clean_duplicate_columns(df)
-            st.session_state.data_cache[analysis_id] = df
-            schema = self._infer_schema(df, file_name, len(file_bytes))
-            return schema, df
-        finally:
-            os.unlink(tmp_path)
-
     def load_excel_from_streamlit(
-        self, uploaded_file: Any, analysis_id: str
-    ) -> Tuple[DataSchema, pl.DataFrame]:
+        self, uploaded_file: Any, file_id: str, sheet_name: Optional[str] = None
+    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
         """
         Load an Excel file from Streamlit's file uploader.
 
         Args:
             uploaded_file: Streamlit UploadedFile object
-            analysis_id: ID of the analysis for caching
+            file_id: ID for caching
+            sheet_name: Optional sheet name (uses first sheet if not specified)
 
         Returns:
-            Tuple of DataSchema and Polars DataFrame
+            Tuple of (FileSheet, DataFrame), or (None, None) on failure
         """
         file_bytes = uploaded_file.getvalue()
-        return self.load_excel_from_bytes(file_bytes, uploaded_file.name, analysis_id)
-
-    def _infer_schema(
-        self, df: pl.DataFrame, file_name: str, file_size: int = 0
-    ) -> DataSchema:
-        """
-        Infer the schema of a DataFrame including column types and statistics.
-
-        Args:
-            df: Polars DataFrame to analyze
-            file_name: Name of the source file
-            file_size: Size of the source file in bytes
-
-        Returns:
-            DataSchema object with inferred types and statistics
-        """
-        columns = []
-
-        for col_name in df.columns:
-            col_series = df[col_name]
-            col_type = self._detect_column_type(col_series)
-
-            # Get sample values (using configurable count)
-            sample_values = (
-                col_series.drop_nulls()
-                .head(settings.data.sample_values_count)
-                .to_list()
-            )
-
-            # Calculate statistics
-            statistics = self._calculate_statistics(col_series, col_type)
-
-            column = Column(
-                name=col_name,
-                data_type=col_type,
-                sample_values=sample_values,
-                null_count=col_series.null_count(),
-                unique_count=col_series.n_unique(),
-                statistics=statistics,
-            )
-            columns.append(column)
-
-        return DataSchema(
-            columns=columns, row_count=len(df), file_name=file_name, file_size=file_size
+        return self.load_excel_from_bytes(
+            file_bytes, uploaded_file.name, file_id, sheet_name
         )
 
-    def _detect_column_type(self, series: pl.Series) -> ColumnType:
+    def load_excel_from_bytes(
+        self,
+        file_bytes: bytes,
+        file_name: str,
+        file_id: str,
+        sheet_name: Optional[str] = None,
+    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
         """
-        Detect the type of a column based on its data.
+        Load an Excel file from bytes.
 
         Args:
-            series: Polars Series to analyze
+            file_bytes: Raw bytes of the Excel file
+            file_name: Original file name
+            file_id: ID for caching
+            sheet_name: Optional sheet name (uses first sheet if not specified)
 
         Returns:
-            ColumnType enum value
+            Tuple of (FileSheet, DataFrame), or (None, None) on failure
         """
-        dtype = series.dtype
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
 
-        # Check Polars dtype
-        if dtype in [
-            pl.Int8,
-            pl.Int16,
-            pl.Int32,
-            pl.Int64,
-            pl.UInt8,
-            pl.UInt16,
-            pl.UInt32,
-            pl.UInt64,
-            pl.Float32,
-            pl.Float64,
-        ]:
-            return ColumnType.NUMERIC
+        try:
+            # Get sheet names
+            sheet_names = self._get_sheet_names(tmp_path)
+            if not sheet_names:
+                return None, None
 
-        if dtype in [pl.Date, pl.Datetime, pl.Time]:
-            return ColumnType.DATETIME
+            # Determine which sheet to read
+            target_sheet = sheet_name or sheet_names[0]
+            if target_sheet not in sheet_names:
+                target_sheet = sheet_names[0]
 
-        if dtype == pl.Boolean:
-            return ColumnType.BOOLEAN
+            # Read the data
+            df = pl.read_excel(tmp_path, sheet_name=target_sheet)
+            df = self._clean_duplicate_columns(df)
 
-        # For string types, try to infer further
-        if dtype == pl.String or dtype == pl.Utf8:
-            # Check if it could be categorical
-            null_count = series.null_count()
-            non_null_count = len(series) - null_count
-
-            if non_null_count == 0:
-                return ColumnType.UNKNOWN
-
-            unique_ratio = (
-                series.n_unique() / non_null_count if non_null_count > 0 else 1.0
+            # Create FileSheet entity
+            sheet_id = f"{file_id}_{target_sheet}"
+            sheet = FileSheet(
+                sheet_id=sheet_id,
+                file_id=file_id,
+                sheet_name=target_sheet,
             )
 
-            # If unique ratio is low, it's likely categorical (using configurable threshold)
-            if unique_ratio < settings.data.categorical_threshold:
-                return ColumnType.CATEGORICAL
+            # Extract columns
+            columns = []
+            for col_name in df.columns:
+                col_series = df[col_name]
+                polars_type = str(col_series.dtype)
+                db_type = Constants.POLARS_TO_DB_TYPE.get(polars_type, "String")
 
-            # Check if values look like dates
-            sample = series.drop_nulls().head(100).to_list()
-            if sample and self._looks_like_datetime(sample):
-                return ColumnType.DATETIME
+                column = SheetColumn(
+                    column_id=f"{sheet_id}_{col_name}",
+                    sheet_id=sheet_id,
+                    column_name=col_name,
+                    data_type=db_type,
+                )
+                columns.append(column)
 
-            # Default to text for high cardinality strings (using configurable threshold)
-            if unique_ratio > settings.data.text_threshold:
-                return ColumnType.TEXT
+            sheet.columns = columns
 
-            return ColumnType.CATEGORICAL
+            # Cache the DataFrame
+            st.session_state.sheet_cache[sheet_id] = df
+            st.session_state.data_cache[file_id] = df
 
-        return ColumnType.UNKNOWN
+            return sheet, df
 
-    def _looks_like_datetime(self, values: List[str]) -> bool:
-        """Check if string values look like datetime values."""
-        import re
+        except Exception as e:
+            logger.error(f"Error loading Excel file: {e}")
+            return None, None
+        finally:
+            os.unlink(tmp_path)
 
-        # Use date patterns from Constants
-        date_patterns = Constants.DATE_PATTERNS
-
-        if not values:
-            return False
-
-        matches = 0
-        for val in values[:10]:
-            if any(re.match(pattern, str(val)) for pattern in date_patterns):
-                matches += 1
-
-        # Use configurable threshold
-        return (
-            matches / min(len(values), 10) > settings.data.datetime_detection_threshold
-        )
-
-    def _calculate_statistics(
-        self, series: pl.Series, col_type: ColumnType
-    ) -> Dict[str, Any]:
+    def load_file_from_s3(
+        self, storage_path: str, file_id: str, sheet_name: Optional[str] = None
+    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
         """
-        Calculate statistics for a column based on its type.
+        Load an Excel file from S3.
 
         Args:
-            series: Polars Series to analyze
-            col_type: Detected column type
+            storage_path: S3 path to the file
+            file_id: ID for caching
+            sheet_name: Optional sheet name (uses first sheet if not specified)
 
         Returns:
-            Dictionary of statistics
+            Tuple of (FileSheet, DataFrame), or (None, None) on failure
         """
-        stats = {}
+        try:
+            s3_client = get_s3_client()
+            file_bytes = s3_client.download_file(storage_path)
 
-        if col_type == ColumnType.NUMERIC:
-            try:
-                non_null = series.drop_nulls()
-                if len(non_null) > 0:
-                    stats["min"] = float(non_null.min())
-                    stats["max"] = float(non_null.max())
-                    stats["mean"] = float(non_null.mean())
-                    stats["median"] = float(non_null.median())
-                    stats["std"] = float(non_null.std()) if len(non_null) > 1 else 0.0
-                    stats["sum"] = float(non_null.sum())
-            except Exception:
-                pass
+            if not file_bytes:
+                return None, None
 
-        elif col_type == ColumnType.CATEGORICAL:
-            try:
-                value_counts = series.value_counts().sort("count", descending=True)
-                stats["top_values"] = value_counts.head(10).to_dicts()
-            except Exception:
-                pass
+            return self.load_excel_from_bytes(
+                file_bytes, "file.xlsx", file_id, sheet_name
+            )
 
-        elif col_type == ColumnType.DATETIME:
-            try:
-                non_null = series.drop_nulls()
-                if len(non_null) > 0:
-                    stats["min_date"] = str(non_null.min())
-                    stats["max_date"] = str(non_null.max())
-            except Exception:
-                pass
+        except Exception as e:
+            logger.error(f"Error loading file from S3: {e}")
+            return None, None
 
-        return stats
+    def _get_sheet_names(self, file_path: str) -> List[str]:
+        """Get all sheet names from an Excel file."""
+        try:
+            from openpyxl import load_workbook
 
-    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
-        """Get cached DataFrame for an analysis."""
-        return st.session_state.data_cache.get(analysis_id)
+            wb = load_workbook(file_path, read_only=True, data_only=True)
+            return wb.sheetnames
+        except Exception as e:
+            logger.error(f"Error getting sheet names: {e}")
+            return ["Sheet1"]
 
-    def set_cached_data(self, analysis_id: str, df: pl.DataFrame) -> None:
-        """Set cached DataFrame for an analysis."""
-        st.session_state.data_cache[analysis_id] = df
+    def get_cached_data(self, file_id: str) -> Optional[pl.DataFrame]:
+        """Get cached DataFrame for a file."""
+        return st.session_state.data_cache.get(file_id)
 
-    def clear_cache(self, analysis_id: Optional[str] = None):
-        """Clear cached data for specific analysis or all."""
-        if analysis_id:
-            st.session_state.data_cache.pop(analysis_id, None)
-        else:
+    def get_cached_sheet(self, sheet_id: str) -> Optional[pl.DataFrame]:
+        """Get cached DataFrame for a sheet."""
+        return st.session_state.sheet_cache.get(sheet_id)
+
+    def set_cached_data(self, file_id: str, df: pl.DataFrame) -> None:
+        """Set cached DataFrame for a file."""
+        st.session_state.data_cache[file_id] = df
+
+    def set_cached_sheet(self, sheet_id: str, df: pl.DataFrame) -> None:
+        """Set cached DataFrame for a sheet."""
+        st.session_state.sheet_cache[sheet_id] = df
+
+    def clear_cache(
+        self, file_id: Optional[str] = None, sheet_id: Optional[str] = None
+    ):
+        """Clear cached data."""
+        if file_id:
+            st.session_state.data_cache.pop(file_id, None)
+        if sheet_id:
+            st.session_state.sheet_cache.pop(sheet_id, None)
+        if not file_id and not sheet_id:
             st.session_state.data_cache.clear()
+            st.session_state.sheet_cache.clear()
 
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]
@@ -431,6 +340,51 @@ class DataService:
         result = df.group_by(list(config.group_by_columns)).agg(
             agg_expr.alias(f"{config.aggregation_column}_{config.aggregation_function}")
         )
+
+        return result
+
+    def prepare_chart_data(
+        self,
+        df: pl.DataFrame,
+        config: VisualizationConfig,
+    ) -> pl.DataFrame:
+        """
+        Prepare data for chart visualization.
+
+        Args:
+            df: Input DataFrame
+            config: Visualization configuration
+
+        Returns:
+            Prepared DataFrame for charting
+        """
+        result = df
+
+        # Handle aggregation
+        if config.x_column and config.y_column:
+            if config.aggregation and config.aggregation != "none":
+                agg_col = pl.col(config.y_column)
+
+                if config.aggregation == "sum":
+                    agg_expr = agg_col.sum()
+                elif config.aggregation == "mean":
+                    agg_expr = agg_col.mean()
+                elif config.aggregation == "count":
+                    agg_expr = agg_col.count()
+                elif config.aggregation == "min":
+                    agg_expr = agg_col.min()
+                elif config.aggregation == "max":
+                    agg_expr = agg_col.max()
+                elif config.aggregation == "median":
+                    agg_expr = agg_col.median()
+                else:
+                    agg_expr = agg_col.sum()
+
+                group_cols = [config.x_column]
+                if config.color_column and config.color_column != config.x_column:
+                    group_cols.append(config.color_column)
+
+                result = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
 
         return result
 

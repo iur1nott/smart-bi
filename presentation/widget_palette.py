@@ -1,28 +1,24 @@
 """
 Widget Palette Component - Secondary sidebar for visualization widgets.
+Updated for new schema with FileSheet and SheetColumn.
 """
 
 from typing import Callable, Optional, List, Any, Dict
 import streamlit as st
 
-from domain.entities import (
-    DataSchema,
-    ColumnType,
-    VisualizationType,
-    VisualizationConfig,
-)
+from domain.entities import FileSheet, SheetColumn, VisualizationConfig
 
 
 def render_widget_palette(
-    data_schema: Optional[DataSchema],
-    on_add_visualization: Callable[[VisualizationType], None],
+    sheet: Optional[FileSheet],
+    on_add_visualization: Callable[[str], None],
     collapsed: bool = False,
 ) -> None:
     """
     Render the widget palette for adding visualizations.
 
     Args:
-        data_schema: Schema of the loaded data
+        sheet: Current sheet with column metadata
         on_add_visualization: Callback when a visualization type is selected
         collapsed: Whether to show only icons (collapsed mode)
     """
@@ -41,7 +37,7 @@ def render_widget_palette(
         unsafe_allow_html=True,
     )
 
-    if not data_schema:
+    if not sheet:
         st.markdown(
             """
         <div style='
@@ -62,22 +58,22 @@ def render_widget_palette(
         return
 
     chart_types = [
-        ("📊", "Barras", VisualizationType.BAR_CHART),
-        ("📈", "Linhas", VisualizationType.LINE_CHART),
-        ("🥧", "Pizza", VisualizationType.PIE_CHART),
-        ("📉", "Área", VisualizationType.AREA_CHART),
-        ("⚬", "Dispersão", VisualizationType.SCATTER_PLOT),
-        ("📊", "Histograma", VisualizationType.HISTOGRAM),
-        ("📦", "Box Plot", VisualizationType.BOX_PLOT),
-        ("📋", "Tabela", VisualizationType.TABLE),
-        ("💳", "Métrica", VisualizationType.METRIC_CARD),
+        ("📊", "Barras", "bar"),
+        ("📈", "Linhas", "line"),
+        ("🥧", "Pizza", "pie"),
+        ("📉", "Área", "area"),
+        ("⚬", "Dispersão", "scatter"),
+        ("📊", "Histograma", "histogram"),
+        ("📦", "Box Plot", "box"),
+        ("📋", "Tabela", "table"),
+        ("💳", "Métrica", "metric_card"),
     ]
 
     cols = st.columns(3)
     for i, (icon, name, viz_type) in enumerate(chart_types):
         with cols[i % 3]:
             if st.button(
-                f"{icon}\n{name}", key=f"widget_btn_{viz_type.value}", width="stretch"
+                f"{icon}\n{name}", key=f"widget_btn_{viz_type}", width="stretch"
             ):
                 on_add_visualization(viz_type)
 
@@ -96,18 +92,18 @@ def render_widget_palette(
         unsafe_allow_html=True,
     )
 
-    with st.expander("📁 Visualizar Dados", expanded=False):
-        render_data_preview(data_schema, None)
+    with st.expander("📁 Visualizar Colunas", expanded=False):
+        render_column_preview(sheet)
 
 
-def render_data_preview(data_schema: DataSchema, df: Any) -> None:
-    """Render a preview of the loaded data."""
+def render_column_preview(sheet: FileSheet) -> None:
+    """Render a preview of the sheet columns."""
     st.markdown(
         f"""
     <div style='background: #F8FAFC; border-radius: 8px; padding: 12px; margin-bottom: 16px;'>
-        <div style='font-weight: 600; color: #1E293B;'>{data_schema.file_name}</div>
+        <div style='font-weight: 600; color: #1E293B;'>{sheet.sheet_name}</div>
         <div style='color: #64748B; font-size: 12px; margin-top: 4px;'>
-            {data_schema.row_count:,} linhas • {len(data_schema.columns)} colunas
+            {len(sheet.columns)} colunas
         </div>
     </div>
     """,
@@ -115,22 +111,34 @@ def render_data_preview(data_schema: DataSchema, df: Any) -> None:
     )
 
     st.markdown("**Colunas:**")
-    for col in data_schema.columns:
+    for col in sheet.columns:
         type_icon = {
-            ColumnType.NUMERIC: "🔢",
-            ColumnType.CATEGORICAL: "📝",
-            ColumnType.DATETIME: "📅",
-            ColumnType.TEXT: "📄",
-            ColumnType.BOOLEAN: "✓",
-            ColumnType.UNKNOWN: "❓",
+            "Int64": "🔢",
+            "Float64": "🔢",
+            "String": "📝",
+            "Boolean": "✓",
+            "Date": "📅",
+            "Datetime": "📅",
+            "Time": "🕐",
         }.get(col.data_type, "❓")
 
-        st.markdown(f"{type_icon} **{col.name}** `{col.data_type.value}`")
+        st.markdown(f"{type_icon} **{col.column_name}** `{col.data_type}`")
+
+
+def get_numeric_columns(sheet: FileSheet) -> List[str]:
+    """Get list of numeric column names."""
+    numeric_types = ["Int64", "Float64"]
+    return [col.column_name for col in sheet.columns if col.data_type in numeric_types]
+
+
+def get_categorical_columns(sheet: FileSheet) -> List[str]:
+    """Get list of categorical (string) column names."""
+    return [col.column_name for col in sheet.columns if col.data_type == "String"]
 
 
 def render_column_mapping(
-    data_schema: DataSchema,
-    viz_type: VisualizationType,
+    sheet: FileSheet,
+    viz_type: str,
     on_map: Callable[[Dict[str, Any]], None],
     on_cancel: Callable[[], None],
 ) -> None:
@@ -138,16 +146,16 @@ def render_column_mapping(
     Render the column mapping dialog for new visualizations.
 
     Args:
-        data_schema: Schema of the loaded data
+        sheet: Sheet with column metadata
         viz_type: Type of visualization to configure
         on_map: Callback when mapping is complete
         on_cancel: Callback when mapping is cancelled
     """
     st.markdown("### ⚙️ Configurar Visualização")
 
-    numeric_cols = data_schema.get_numeric_columns()
-    categorical_cols = data_schema.get_categorical_columns()
-    all_cols = data_schema.get_column_names()
+    numeric_cols = get_numeric_columns(sheet)
+    categorical_cols = get_categorical_columns(sheet)
+    all_cols = sheet.get_column_names()
 
     # Title input
     title = st.text_input(
@@ -157,12 +165,12 @@ def render_column_mapping(
     )
 
     config: Dict[str, Any] = {
-        "visualization_type": viz_type,
+        "viz_type": viz_type,
         "title": title,
     }
 
     # Configure based on visualization type
-    if viz_type == VisualizationType.TABLE:
+    if viz_type == "table":
         st.markdown("**Colunas para exibir:**")
         selected_cols = st.multiselect(
             "Selecione as colunas",
@@ -174,12 +182,12 @@ def render_column_mapping(
         config["y_column"] = selected_cols[1] if len(selected_cols) > 1 else None
         config["color_column"] = selected_cols[2] if len(selected_cols) > 2 else None
 
-    elif viz_type == VisualizationType.METRIC_CARD:
+    elif viz_type == "metric_card":
         col1, col2 = st.columns(2)
         with col1:
             config["y_column"] = st.selectbox(
                 "Coluna de Valor",
-                numeric_cols,
+                numeric_cols if numeric_cols else all_cols,
                 key="metric_value_col",
             )
         with col2:
@@ -189,7 +197,7 @@ def render_column_mapping(
                 key="metric_agg",
             )
 
-    elif viz_type == VisualizationType.PIE_CHART:
+    elif viz_type == "pie":
         col1, col2 = st.columns(2)
         with col1:
             config["x_column"] = st.selectbox(
@@ -200,18 +208,18 @@ def render_column_mapping(
         with col2:
             config["y_column"] = st.selectbox(
                 "Valores",
-                numeric_cols,
+                numeric_cols if numeric_cols else all_cols,
                 key="pie_value_col",
             )
 
-    elif viz_type == VisualizationType.HISTOGRAM:
+    elif viz_type == "histogram":
         config["x_column"] = st.selectbox(
             "Coluna para Histograma",
-            numeric_cols,
+            numeric_cols if numeric_cols else all_cols,
             key="hist_col",
         )
 
-    elif viz_type == VisualizationType.BOX_PLOT:
+    elif viz_type == "box":
         col1, col2 = st.columns(2)
         with col1:
             config["x_column"] = st.selectbox(
@@ -222,7 +230,7 @@ def render_column_mapping(
         with col2:
             config["y_column"] = st.selectbox(
                 "Coluna Y (Valores)",
-                numeric_cols,
+                numeric_cols if numeric_cols else all_cols,
                 key="box_y_col",
             )
 

@@ -1,6 +1,7 @@
 """
 User Repository Implementation - PostgreSQL-based user persistence.
 Implements the UserRepository interface using SQLAlchemy.
+Updated for new schema with user_id as primary key.
 """
 
 from typing import List, Optional
@@ -43,41 +44,32 @@ class UserRepositoryImpl(UserRepository):
         try:
             with self._db.session_scope() as session:
                 # Check if user exists
-                existing = session.query(UserModel).filter(UserModel.id == user.id).first()
+                existing = (
+                    session.query(UserModel)
+                    .filter(UserModel.user_id == user.user_id)
+                    .first()
+                )
 
                 if existing:
                     # Update existing user
                     existing.username = user.username
                     existing.email = user.email
                     existing.password_hash = user.password_hash
-                    existing.full_name = user.full_name
-                    existing.is_active = user.is_active
-                    existing.is_admin = user.is_admin
-                    existing.settings = user.settings
-                    existing.updated_at = datetime.utcnow()
-                    if user.last_login:
-                        existing.last_login = user.last_login
                 else:
                     # Create new user
                     model = UserModel(
-                        id=user.id,
+                        user_id=user.user_id,
                         username=user.username,
                         email=user.email,
                         password_hash=user.password_hash,
-                        full_name=user.full_name,
-                        is_active=user.is_active,
-                        is_admin=user.is_admin,
-                        settings=user.settings,
                         created_at=user.created_at,
-                        updated_at=user.updated_at,
-                        last_login=user.last_login,
                     )
                     session.add(model)
 
                 return True
 
         except Exception as e:
-            logger.error(f"Error saving user {user.id}: {e}")
+            logger.error(f"Error saving user {user.user_id}: {e}")
             return False
 
     def find_by_id(self, user_id: str) -> Optional[User]:
@@ -92,7 +84,11 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = session.query(UserModel).filter(UserModel.id == user_id).first()
+                model = (
+                    session.query(UserModel)
+                    .filter(UserModel.user_id == user_id)
+                    .first()
+                )
 
                 if model:
                     return self._model_to_entity(model)
@@ -114,7 +110,11 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = session.query(UserModel).filter(UserModel.username.ilike(username)).first()
+                model = (
+                    session.query(UserModel)
+                    .filter(UserModel.username.ilike(username))
+                    .first()
+                )
 
                 if model:
                     return self._model_to_entity(model)
@@ -136,7 +136,11 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = session.query(UserModel).filter(UserModel.email.ilike(email)).first()
+                model = (
+                    session.query(UserModel)
+                    .filter(UserModel.email.ilike(email))
+                    .first()
+                )
 
                 if model:
                     return self._model_to_entity(model)
@@ -185,7 +189,11 @@ class UserRepositoryImpl(UserRepository):
         """
         try:
             with self._db.session_scope() as session:
-                model = session.query(UserModel).filter(UserModel.id == user_id).first()
+                model = (
+                    session.query(UserModel)
+                    .filter(UserModel.user_id == user_id)
+                    .first()
+                )
 
                 if model:
                     session.delete(model)
@@ -214,15 +222,9 @@ class UserRepositoryImpl(UserRepository):
     def _model_to_entity(self, model: UserModel) -> User:
         """Convert a SQLAlchemy model to a domain entity."""
         return User(
-            id=str(model.id),
+            user_id=str(model.user_id),
             username=model.username,
             email=model.email,
             password_hash=model.password_hash,
-            full_name=model.full_name or "",
-            is_active=model.is_active,
-            is_admin=model.is_admin,
-            settings=model.settings or {},
             created_at=model.created_at,
-            updated_at=model.updated_at,
-            last_login=model.last_login,
         )

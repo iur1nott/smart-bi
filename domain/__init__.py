@@ -1,19 +1,19 @@
 """
 Domain Layer - Core business entities and value objects.
 This layer contains pure business logic with no external dependencies.
+Matches the database schema defined in smartxl_db_creator.sql
 """
 
 from .entities import (
     User,
-    UserSession,
-    Analysis,
-    Slide,
+    File,
+    FileSheet,
+    SheetColumn,
+    Dashboard,
     Visualization,
     VisualizationConfig,
     VisualizationType,
-    DataSchema,
-    Column,
-    ColumnType,
+    ColumnDataType,
     ExportFormat,
 )
 from .value_objects import (
@@ -31,24 +31,29 @@ from .value_objects import (
 )
 from .repositories import (
     UserRepository,
-    AnalysisRepository,
-    SessionRepository,
-    DataRepository,
+    DashboardRepository,
+    FileRepository,
 )
+
+# Type aliases for backward compatibility
+Analysis = Dashboard
+Slide = Visualization
 
 __all__ = [
     # Entities
     "User",
-    "UserSession",
-    "Analysis",
-    "Slide",
+    "File",
+    "FileSheet",
+    "SheetColumn",
+    "Dashboard",
     "Visualization",
     "VisualizationConfig",
     "VisualizationType",
-    "DataSchema",
-    "Column",
-    "ColumnType",
+    "ColumnDataType",
     "ExportFormat",
+    # Backward compatibility aliases
+    "Analysis",
+    "Slide",
     # Value Objects
     "Credentials",
     "ExportOptions",
@@ -63,7 +68,6 @@ __all__ = [
     "LayoutConstraints",
     # Repository Interfaces
     "UserRepository",
-    "AnalysisRepository",
-    "SessionRepository",
-    "DataRepository",
+    "DashboardRepository",
+    "FileRepository",
 ]
