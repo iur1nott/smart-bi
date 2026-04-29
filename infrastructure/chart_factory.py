@@ -34,23 +34,37 @@ class ChartFactory:
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
 
-    def create_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def create_chart(
+        self,
+        df: pl.DataFrame,
+        config: VisualizationConfig,
+        sort_by: str = "none",
+    ) -> go.Figure:
         """Create a Plotly figure based on VisualizationConfig."""
-        dispatch = {
-            VisualizationType.COLUMN_CHART: self._create_column_chart,
-            VisualizationType.BAR_CHART:    self._create_bar_chart,
-            VisualizationType.LINE_CHART:   self._create_line_chart,
-            VisualizationType.AREA_CHART:   self._create_area_chart,
-            VisualizationType.PIE_CHART:    self._create_pie_chart,
-            VisualizationType.SCATTER_PLOT: self._create_scatter_plot,
-            VisualizationType.HISTOGRAM:    self._create_histogram,
-            VisualizationType.BOX_PLOT:     self._create_box_plot,
-            VisualizationType.HEATMAP:      self._create_heatmap,
-        }
-        method = dispatch.get(config.visualization_type)
-        fig = method(df, config) if method else self._create_empty_figure(
-            f"Tipo '{config.visualization_type.value}' não implementado"
-        )
+        vtype = config.visualization_type
+
+        # Tipos que suportam ordenação pelo usuário
+        if vtype == VisualizationType.COLUMN_CHART:
+            fig = self._create_column_chart(df, config, sort_by)
+        elif vtype == VisualizationType.BAR_CHART:
+            fig = self._create_bar_chart(df, config, sort_by)
+        elif vtype == VisualizationType.PIE_CHART:
+            fig = self._create_pie_chart(df, config, sort_by)
+        elif vtype == VisualizationType.LINE_CHART:
+            fig = self._create_line_chart(df, config)
+        elif vtype == VisualizationType.AREA_CHART:
+            fig = self._create_area_chart(df, config)
+        elif vtype == VisualizationType.SCATTER_PLOT:
+            fig = self._create_scatter_plot(df, config)
+        elif vtype == VisualizationType.HISTOGRAM:
+            fig = self._create_histogram(df, config)
+        elif vtype == VisualizationType.BOX_PLOT:
+            fig = self._create_box_plot(df, config)
+        else:
+            fig = self._create_empty_figure(
+                f"Tipo '{vtype.value}' não implementado"
+            )
+
         self._apply_common_style(fig, config)
         return fig
 
@@ -64,6 +78,347 @@ class ChartFactory:
     ) -> str:
         import base64
         return base64.b64encode(self.export_figure_to_bytes(fig, format, scale)).decode()
+
+    def render_to_image_bytes(
+        self,
+        df: pl.DataFrame,
+        config: "VisualizationConfig",
+    ) -> bytes:
+        """Gera PNG do gráfico usando Pillow ImageDraw — sem C extensions extras."""
+        import io as _io
+        import math
+        from PIL import Image, ImageDraw, ImageFont
+
+        W, H = 700, 380
+        ML, MR, MT, MB = 80, 30, 40, 70  # margens
+
+        PALETTE = [
+            (78, 121, 167), (242, 142, 43), (225, 87, 89), (118, 183, 178),
+            (89, 161, 79),  (237, 201, 72), (176, 122, 161),(255, 157, 167),
+            (156, 117, 95), (186, 176, 172),
+        ]
+
+        def hex_to_rgb(h: str) -> tuple:
+            h = h.lstrip("#")
+            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+        def palette_color(i: int, alpha: int = 255) -> tuple:
+            r, g, b = PALETTE[i % len(PALETTE)]
+            return (r, g, b, alpha)
+
+        def fmt_label(v, max_len=10) -> str:
+            s = str(v)
+            return s[:max_len] + "…" if len(s) > max_len else s
+
+        vtype = config.visualization_type
+        title = config.title or vtype.value.replace("_", " ").title()
+        agg = config.aggregation or "sum"
+
+        img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+        draw = ImageDraw.Draw(img, "RGBA")
+
+        try:
+            font_sm = ImageFont.load_default(size=9)
+            font_md = ImageFont.load_default(size=11)
+            font_bold = ImageFont.load_default(size=12)
+        except Exception:
+            font_sm = font_md = font_bold = ImageFont.load_default()
+
+        cx0 = ML          # chart area left
+        cy0 = MT          # chart area top
+        cw  = W - ML - MR # chart area width
+        ch  = H - MT - MB # chart area height
+        cx1 = cx0 + cw    # chart area right
+        cy1 = cy0 + ch    # chart area bottom  (pixels grow downward)
+
+        GRAY_AXIS  = (203, 213, 225)
+        GRAY_GRID  = (226, 232, 240)
+        GRAY_LABEL = (71, 85, 105)
+
+        def draw_axes():
+            draw.line([(cx0, cy0), (cx0, cy1)], fill=GRAY_AXIS, width=1)
+            draw.line([(cx0, cy1), (cx1, cy1)], fill=GRAY_AXIS, width=1)
+
+        def draw_y_grid(min_v, max_v, n=5):
+            rng = max_v - min_v or 1
+            for i in range(n + 1):
+                val = min_v + rng * i / n
+                y = cy1 - (val - min_v) / rng * ch
+                draw.line([(cx0, y), (cx1, y)], fill=GRAY_GRID, width=1)
+                label = f"{val:,.0f}" if abs(val) >= 10 else f"{val:.1f}"
+                draw.text((cx0 - 4, y - 5), label, fill=GRAY_LABEL, font=font_sm, anchor="rm")
+
+        def val_to_y(v, min_v, max_v):
+            rng = max_v - min_v or 1
+            return cy1 - (v - min_v) / rng * ch
+
+        try:
+            # ── Coluna / Barra ───────────────────────────────────────────────
+            if vtype in (VisualizationType.COLUMN_CHART, VisualizationType.BAR_CHART):
+                x_col = config.x_column
+                y_cols = config.y_columns or ([config.y_column] if config.y_column else [])
+                y_cols = [c for c in y_cols if c and c in df.columns]
+                if x_col and x_col in df.columns and y_cols:
+                    agged = self._aggregate(df, x_col, y_cols, agg)
+                    cats  = agged[x_col].cast(pl.String).to_list()
+                    series = {yc: agged[yc].to_list() for yc in y_cols if yc in agged.columns}
+                    all_vals = [v for lst in series.values() for v in lst if v is not None]
+                    min_v, max_v = 0, (max(all_vals) * 1.1 if all_vals else 1)
+
+                    if vtype == VisualizationType.COLUMN_CHART:
+                        draw_axes()
+                        draw_y_grid(min_v, max_v)
+                        n_cats  = len(cats)
+                        group_w = cw / max(n_cats, 1)
+                        bar_w   = group_w * 0.6 / max(len(y_cols), 1)
+                        for ci, cat in enumerate(cats):
+                            x_base = cx0 + group_w * ci + group_w * 0.2
+                            for si, (yc, vals) in enumerate(series.items()):
+                                v  = vals[ci] if vals[ci] is not None else 0
+                                bh = (v - min_v) / (max_v - min_v) * ch
+                                bx = x_base + bar_w * si
+                                draw.rectangle(
+                                    [(bx, cy1 - bh), (bx + bar_w - 1, cy1)],
+                                    fill=palette_color(si),
+                                )
+                            lbl = fmt_label(cat, 8)
+                            lx  = x_base + bar_w * len(y_cols) / 2
+                            draw.text((lx, cy1 + 4), lbl, fill=GRAY_LABEL, font=font_sm, anchor="mt")
+
+                    else:  # BAR_CHART horizontal
+                        n_cats = len(cats)
+                        bar_h  = ch / max(n_cats, 1) * 0.6
+                        all_x  = [v for lst in series.values() for v in lst if v is not None]
+                        max_x  = max(all_x) * 1.1 if all_x else 1
+                        draw.line([(cx0, cy0), (cx0, cy1)], fill=GRAY_AXIS, width=1)
+                        for ci, cat in enumerate(cats):
+                            y_base = cy0 + ci * (ch / max(n_cats, 1)) + ch / max(n_cats, 1) * 0.2
+                            for si, (yc, vals) in enumerate(series.items()):
+                                v  = vals[ci] if vals[ci] is not None else 0
+                                bw = v / max_x * cw
+                                by = y_base + bar_h * si
+                                draw.rectangle(
+                                    [(cx0, by), (cx0 + bw, by + bar_h - 1)],
+                                    fill=palette_color(si),
+                                )
+                            lbl = fmt_label(cat, 12)
+                            draw.text((cx0 - 4, y_base + bar_h / 2), lbl,
+                                      fill=GRAY_LABEL, font=font_sm, anchor="rm")
+
+            # ── Linha / Área ─────────────────────────────────────────────────
+            elif vtype in (VisualizationType.LINE_CHART, VisualizationType.AREA_CHART):
+                x_col = config.x_column
+                y_col = config.y_column
+                if x_col and y_col and x_col in df.columns and y_col in df.columns:
+                    agged = self._aggregate(df, x_col, [y_col], agg)
+                    cats  = agged[x_col].cast(pl.String).to_list()
+                    vals  = [v if v is not None else 0 for v in agged[y_col].to_list()]
+                    min_v, max_v = 0, (max(vals) * 1.1 if vals else 1)
+                    draw_axes()
+                    draw_y_grid(min_v, max_v)
+                    n    = len(vals)
+                    step = cw / max(n - 1, 1)
+                    pts  = [(cx0 + i * step, val_to_y(v, min_v, max_v))
+                            for i, v in enumerate(vals)]
+                    color_line = palette_color(0)
+                    if vtype == VisualizationType.AREA_CHART and len(pts) >= 2:
+                        poly = [(cx0, cy1)] + list(pts) + [(pts[-1][0], cy1)]
+                        draw.polygon(poly, fill=palette_color(0, 80))
+                    if len(pts) >= 2:
+                        draw.line(pts, fill=color_line, width=2)
+                    for i, (px, py) in enumerate(pts):
+                        r = 3
+                        draw.ellipse([(px - r, py - r), (px + r, py + r)],
+                                     fill=color_line, outline=(255, 255, 255, 255), width=1)
+                        if i % max(1, n // 8) == 0:
+                            draw.text((px, cy1 + 4), fmt_label(cats[i], 8),
+                                      fill=GRAY_LABEL, font=font_sm, anchor="mt")
+
+            # ── Pizza ────────────────────────────────────────────────────────
+            elif vtype == VisualizationType.PIE_CHART:
+                x_col = config.x_column
+                y_col = config.y_column
+                if x_col and y_col and x_col in df.columns and y_col in df.columns:
+                    agged  = self._aggregate(df, x_col, [y_col], agg)
+                    labels = agged[x_col].cast(pl.String).to_list()
+                    vals   = [abs(v) if v is not None else 0 for v in agged[y_col].to_list()]
+                    total  = sum(vals) or 1
+                    pcx, pcy = W // 2 - 60, H // 2
+                    r = int(min(ch, cw) * 0.38)
+                    bbox = [(pcx - r, pcy - r), (pcx + r, pcy + r)]
+                    angle = -90.0
+                    for i, (lbl, v) in enumerate(zip(labels, vals)):
+                        sweep = v / total * 360
+                        draw.pieslice(bbox, start=angle, end=angle + sweep,
+                                      fill=palette_color(i), outline=(255, 255, 255, 255))
+                        mid_a = math.radians(angle + sweep / 2)
+                        lx = pcx + (r + 16) * math.cos(mid_a)
+                        ly = pcy + (r + 16) * math.sin(mid_a)
+                        pct = f"{v / total * 100:.1f}%"
+                        draw.text((lx, ly), pct, fill=(51, 65, 85), font=font_sm, anchor="mm")
+                        angle += sweep
+                    # legend
+                    lx0 = pcx + r + 20
+                    for i, lbl in enumerate(labels[:10]):
+                        ly0 = pcy - r + i * 18
+                        draw.rectangle([(lx0, ly0), (lx0 + 10, ly0 + 10)],
+                                       fill=palette_color(i))
+                        draw.text((lx0 + 14, ly0 + 5), fmt_label(lbl, 14),
+                                  fill=GRAY_LABEL, font=font_sm, anchor="lm")
+
+            # ── Dispersão ────────────────────────────────────────────────────
+            elif vtype == VisualizationType.SCATTER_PLOT:
+                x_col, y_col = config.x_column, config.y_column
+                if x_col and y_col and x_col in df.columns and y_col in df.columns:
+                    xs = [v for v in df[x_col].to_list() if v is not None]
+                    ys = [v for v in df[y_col].to_list() if v is not None]
+                    if xs and ys:
+                        min_x, max_x = min(xs), max(xs) or 1
+                        min_y, max_y = min(ys), max(ys) or 1
+                        rx = max_x - min_x or 1
+                        ry = max_y - min_y or 1
+                        draw_axes()
+                        draw_y_grid(min_y, max_y)
+                        c = palette_color(0, 140)
+                        for xv, yv in list(zip(xs, ys))[:500]:
+                            px_ = cx0 + (xv - min_x) / rx * cw
+                            py_ = val_to_y(yv, min_y, max_y)
+                            r = 3
+                            draw.ellipse([(px_ - r, py_ - r), (px_ + r, py_ + r)], fill=c)
+
+            # ── Histograma ───────────────────────────────────────────────────
+            elif vtype == VisualizationType.HISTOGRAM:
+                x_col = config.x_column
+                if x_col and x_col in df.columns:
+                    vals = sorted([v for v in df[x_col].to_list() if v is not None])
+                    if vals:
+                        n_bins = min(20, len(set(vals)))
+                        min_v, max_v = vals[0], vals[-1]
+                        rng   = max_v - min_v or 1
+                        bin_w = rng / n_bins
+                        counts = [0] * n_bins
+                        for v in vals:
+                            bi = min(int((v - min_v) / bin_w), n_bins - 1)
+                            counts[bi] += 1
+                        max_c = max(counts) * 1.1 or 1
+                        draw_axes()
+                        draw_y_grid(0, max_c)
+                        bw = cw / n_bins
+                        for i, c in enumerate(counts):
+                            bh = c / max_c * ch
+                            bx = cx0 + i * bw
+                            draw.rectangle(
+                                [(bx + 1, cy1 - bh), (bx + bw - 1, cy1)],
+                                fill=palette_color(0),
+                            )
+
+            # ── Box Plot ─────────────────────────────────────────────────────
+            elif vtype == VisualizationType.BOX_PLOT:
+                y_col = config.y_column
+                x_col = config.x_column
+                if y_col and y_col in df.columns:
+                    groups = {}
+                    if x_col and x_col in df.columns:
+                        for g in df[x_col].unique().sort().to_list():
+                            groups[str(g)] = df.filter(pl.col(x_col) == g)[y_col].drop_nulls().to_list()
+                    else:
+                        groups[y_col] = df[y_col].drop_nulls().to_list()
+                    all_v = [v for lst in groups.values() for v in lst]
+                    if all_v:
+                        min_v, max_v = min(all_v), max(all_v) * 1.05 or 1
+                        draw_axes()
+                        draw_y_grid(min_v, max_v)
+                        gnames = list(groups.keys())
+                        gw = cw / len(gnames)
+                        for gi, (gname, gvals) in enumerate(groups.items()):
+                            if not gvals:
+                                continue
+                            sv  = sorted(gvals)
+                            n   = len(sv)
+                            q1  = sv[n // 4]
+                            med = sv[n // 2]
+                            q3  = sv[3 * n // 4]
+                            lo  = sv[0]
+                            hi  = sv[-1]
+                            bx  = cx0 + gw * gi + gw * 0.25
+                            bw2 = gw * 0.5
+                            mid = bx + bw2 / 2
+                            r, g_c, b = PALETTE[gi % len(PALETTE)]
+                            draw.rectangle(
+                                [(bx, val_to_y(q3, min_v, max_v)),
+                                 (bx + bw2, val_to_y(q1, min_v, max_v))],
+                                fill=(r, g_c, b, 100), outline=(r, g_c, b, 255), width=2,
+                            )
+                            my = val_to_y(med, min_v, max_v)
+                            draw.line([(bx, my), (bx + bw2, my)], fill=(r, g_c, b, 255), width=2)
+                            draw.line([(mid, val_to_y(lo, min_v, max_v)),
+                                       (mid, val_to_y(q1, min_v, max_v))],
+                                      fill=(r, g_c, b, 200), width=1)
+                            draw.line([(mid, val_to_y(q3, min_v, max_v)),
+                                       (mid, val_to_y(hi, min_v, max_v))],
+                                      fill=(r, g_c, b, 200), width=1)
+                            draw.text((bx + bw2 / 2, cy1 + 4), fmt_label(gname, 10),
+                                      fill=GRAY_LABEL, font=font_sm, anchor="mt")
+
+            # ── Heatmap ──────────────────────────────────────────────────────
+            elif vtype == VisualizationType.HEATMAP:
+                x_col  = config.x_column
+                y_col  = config.y_column
+                val_col = config.color_column
+                if x_col and y_col and val_col and all(
+                    c in df.columns for c in [x_col, y_col, val_col]
+                ):
+                    agged = (df.group_by([x_col, y_col])
+                               .agg(pl.col(val_col).sum().alias(val_col)))
+                    xs = sorted(set(agged[x_col].cast(pl.String).to_list()))
+                    ys = sorted(set(agged[y_col].cast(pl.String).to_list()))
+                    lookup = {}
+                    for row in agged.iter_rows(named=True):
+                        lookup[(str(row[x_col]), str(row[y_col]))] = row[val_col] or 0
+                    all_v = list(lookup.values())
+                    min_v = min(all_v) if all_v else 0
+                    max_v = max(all_v) if all_v else 1
+                    rng   = max_v - min_v or 1
+                    cell_w = cw / max(len(xs), 1)
+                    cell_h = ch / max(len(ys), 1)
+                    for xi, xv in enumerate(xs[:20]):
+                        for yi, yv in enumerate(ys[:20]):
+                            v = lookup.get((xv, yv), 0)
+                            t = (v - min_v) / rng
+                            r_ = int(237 - 140 * t)
+                            g_ = int(247 - 102 * t)
+                            b_ = int(252 - 76 * t)
+                            px_ = cx0 + xi * cell_w
+                            py_ = cy0 + yi * cell_h
+                            draw.rectangle(
+                                [(px_, py_), (px_ + cell_w - 1, py_ + cell_h - 1)],
+                                fill=(r_, g_, b_, 255),
+                            )
+                        draw.text((cx0 + xi * cell_w + cell_w / 2, cy1 + 4),
+                                  fmt_label(xv, 6), fill=GRAY_LABEL, font=font_sm, anchor="mt")
+                    for yi, yv in enumerate(ys[:20]):
+                        draw.text((cx0 - 4, cy0 + yi * cell_h + cell_h / 2),
+                                  fmt_label(yv, 8), fill=GRAY_LABEL, font=font_sm, anchor="rm")
+
+            else:
+                draw.text((W // 2, H // 2), f"Visual: {title}",
+                          fill=(148, 163, 184), font=font_md, anchor="mm")
+
+        except Exception as e:
+            img2 = Image.new("RGBA", (W, H), (255, 245, 245, 255))
+            draw2 = ImageDraw.Draw(img2)
+            draw2.text((W // 2, H // 2), f"Erro: {str(e)[:60]}",
+                       fill=(239, 68, 68), font=font_sm, anchor="mm")
+            img = img2
+            draw = draw2
+
+        # título
+        draw.text((W // 2, 18), title, fill=(30, 41, 59), font=font_bold, anchor="mm")
+
+        buf = _io.BytesIO()
+        img.convert("RGB").save(buf, format="PNG")
+        buf.seek(0)
+        return buf.read()
 
     def get_available_color_schemes(self) -> List[str]:
         return list(self.COLOR_SCHEMES.keys())
@@ -91,8 +446,9 @@ class ChartFactory:
         y_cols: List[str],
         agg: str,
         group_col: Optional[str] = None,
+        sort_by: str = "none",
     ) -> pl.DataFrame:
-        """GroupBy x_col (+ group_col) and aggregate each y_col."""
+        """GroupBy x_col (+ group_col), aggregate each y_col, then sort."""
         valid_y = [c for c in y_cols if c and c in df.columns]
         if not valid_y or x_col not in df.columns:
             return df
@@ -101,11 +457,24 @@ class ChartFactory:
         if group_col and group_col in df.columns and group_col != x_col:
             group_keys.append(group_col)
 
-        return (
+        result = (
             df.group_by(group_keys)
             .agg([self._agg_expr(c, agg) for c in valid_y])
-            .sort(x_col)
         )
+
+        # Aplicar ordenação
+        if sort_by == "x_asc":
+            result = result.sort(x_col, descending=False)
+        elif sort_by == "x_desc":
+            result = result.sort(x_col, descending=True)
+        elif sort_by == "value_asc" and valid_y:
+            result = result.sort(valid_y[0], descending=False)
+        elif sort_by == "value_desc" and valid_y:
+            result = result.sort(valid_y[0], descending=True)
+        else:
+            result = result.sort(x_col)  # padrão: ordem da categoria
+
+        return result
 
     def _fmt_values(self, values: list) -> List[str]:
         """Format a list of values for chart text labels."""
@@ -132,7 +501,7 @@ class ChartFactory:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _create_column_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
+        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
     ) -> go.Figure:
         """Vertical bar (column) chart – supports multiple Y metrics."""
         y_cols = self._y_cols_from_config(config)
@@ -140,7 +509,7 @@ class ChartFactory:
             return self._create_empty_figure("Selecione as colunas de Categoria e Valor")
 
         df_plot = self._aggregate(
-            df, config.x_column, y_cols, config.aggregation, config.color_column
+            df, config.x_column, y_cols, config.aggregation, config.color_column, sort_by
         )
         colors = self._colors(config)
         fig = go.Figure()
@@ -167,14 +536,14 @@ class ChartFactory:
         return fig
 
     def _create_bar_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
+        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
     ) -> go.Figure:
         """Horizontal bar chart – supports multiple Y metrics."""
         y_cols = self._y_cols_from_config(config)
         if not y_cols or not config.x_column:
             return self._create_empty_figure("Selecione as colunas de Categoria e Valor")
 
-        df_plot = self._aggregate(df, config.x_column, y_cols, config.aggregation)
+        df_plot = self._aggregate(df, config.x_column, y_cols, config.aggregation, sort_by=sort_by)
         colors = self._colors(config)
         fig = go.Figure()
 
@@ -256,7 +625,7 @@ class ChartFactory:
         return fig
 
     def _create_pie_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig
+        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
     ) -> go.Figure:
         """Pie chart with real aggregation."""
         x_col = config.x_column
@@ -264,7 +633,7 @@ class ChartFactory:
         if not x_col or not y_col:
             return self._create_empty_figure("Selecione colunas de Categoria e Valor")
 
-        df_plot = self._aggregate(df, x_col, [y_col], config.aggregation)
+        df_plot = self._aggregate(df, x_col, [y_col], config.aggregation, sort_by=sort_by)
         pdf = df_plot.to_pandas()
 
         fig = px.pie(

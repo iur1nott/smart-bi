@@ -1,26 +1,19 @@
 """
-PDF Generator - Alternative PDF generation using ReportLab.
-Provides fallback when LaTeX compilation is not available.
+PDF Generator - Exportação da análise para PDF usando ReportLab.
+Gera todos os visuais empilhados (gráficos, tabelas, métricas) com filtros aplicados.
 """
 
 from typing import List, Dict, Any, Optional
 import os
-from datetime import datetime
 import io
-import base64
+from datetime import datetime
 
-from domain.entities import Analysis, Slide, Visualization, VisualizationType
+from domain.entities import Analysis, Visualization, VisualizationType
 from domain.value_objects import ExportOptions
 
 
 class PDFGenerator:
-    """
-    PDF generator using ReportLab library.
-    Provides direct PDF generation without LaTeX dependency.
-    """
-
     def __init__(self, output_dir: str = "download"):
-        """Initialize PDF generator."""
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
@@ -29,47 +22,31 @@ class PDFGenerator:
         analysis: Analysis,
         options: ExportOptions,
         chart_images: Optional[Dict[str, bytes]] = None,
+        table_data: Optional[Dict[str, Dict]] = None,
+        metric_data: Optional[Dict[str, Dict]] = None,
     ) -> str:
-        """
-        Generate PDF from analysis using ReportLab.
-
-        Args:
-            analysis: Analysis to export
-            options: Export options
-            chart_images: Dictionary of visualization ID to image bytes
-
-        Returns:
-            Path to generated PDF file
-        """
         from reportlab.lib.pagesizes import A4, letter, legal
-        from reportlab.platypus import (
-            SimpleDocTemplate,
-            Paragraph,
-            Spacer,
-            Image,
-            Table,
-            TableStyle,
-            PageBreak,
-            KeepTogether,
-        )
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
-        from reportlab.lib.units import mm, inch
+        from reportlab.lib.units import mm
         from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-        # Determine page size
+        chart_images = chart_images or {}
+        table_data = table_data or {}
+        metric_data = metric_data or {}
+
         page_sizes = {"a4": A4, "letter": letter, "legal": legal}
         page_size = page_sizes.get(options.paper_size, A4)
-
-        # Adjust for orientation
         if options.orientation == "landscape":
             page_size = (page_size[1], page_size[0])
 
-        # Create output file path
-        output_filename = f"{analysis.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        output_filename = (
+            f"{analysis.name.replace(' ', '_')}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
         output_path = os.path.join(self.output_dir, output_filename)
 
-        # Create document
         doc = SimpleDocTemplate(
             output_path,
             pagesize=page_size,
@@ -79,263 +56,261 @@ class PDFGenerator:
             bottomMargin=options.margin_mm * mm,
         )
 
-        # Get styles
         styles = getSampleStyleSheet()
 
-        # Custom styles
-        title_style = ParagraphStyle(
-            "CustomTitle",
+        style_title = ParagraphStyle(
+            "Title",
             parent=styles["Title"],
-            fontSize=24,
-            spaceAfter=30,
+            fontSize=30,
+            spaceAfter=8,
+            spaceBefore=0,
             alignment=TA_CENTER,
+            textColor=colors.HexColor("#1E293B"),
+            fontName="Helvetica-Bold",
         )
-
-        heading_style = ParagraphStyle(
-            "CustomHeading",
-            parent=styles["Heading2"],
-            fontSize=16,
-            spaceBefore=20,
-            spaceAfter=10,
-            textColor=colors.HexColor("#2c3e50"),
-        )
-
-        body_style = ParagraphStyle(
-            "CustomBody",
+        style_subtitle = ParagraphStyle(
+            "Subtitle",
             parent=styles["Normal"],
-            fontSize=options.font_size,
-            spaceAfter=12,
+            fontSize=10,
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#64748B"),
         )
-
-        caption_style = ParagraphStyle(
+        style_slide = ParagraphStyle(
+            "SlideTitle",
+            parent=styles["Heading1"],
+            fontSize=15,
+            spaceBefore=10,
+            spaceAfter=8,
+            textColor=colors.HexColor("#1E293B"),
+            borderPad=4,
+        )
+        style_viz_title = ParagraphStyle(
+            "VizTitle",
+            parent=styles["Heading2"],
+            fontSize=11,
+            spaceBefore=14,
+            spaceAfter=6,
+            textColor=colors.HexColor("#334155"),
+        )
+        style_caption = ParagraphStyle(
             "Caption",
             parent=styles["Normal"],
-            fontSize=10,
-            textColor=colors.gray,
+            fontSize=9,
+            textColor=colors.HexColor("#94A3B8"),
             alignment=TA_CENTER,
-            spaceBefore=6,
-            spaceAfter=12,
+            spaceAfter=8,
         )
-
-        comment_style = ParagraphStyle(
+        style_comment = ParagraphStyle(
             "Comment",
             parent=styles["Italic"],
+            fontSize=9,
+            textColor=colors.HexColor("#64748B"),
+            leftIndent=12,
+            spaceAfter=8,
+        )
+        style_metric_label = ParagraphStyle(
+            "MetricLabel",
+            parent=styles["Normal"],
             fontSize=10,
-            textColor=colors.HexColor("#7f8c8d"),
-            leftIndent=20,
-            spaceAfter=12,
+            textColor=colors.HexColor("#64748B"),
+            alignment=TA_CENTER,
+            spaceAfter=4,
+        )
+        style_metric_value = ParagraphStyle(
+            "MetricValue",
+            parent=styles["Normal"],
+            fontSize=28,
+            textColor=colors.HexColor("#1E293B"),
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
+            spaceAfter=16,
         )
 
-        # Build content
         story = []
 
-        # Add header if specified
+        # ── Capa ─────────────────────────────────────────────────────────────
         if options.header_text:
-            header_para = Paragraph(options.header_text, body_style)
-            story.append(header_para)
-            story.append(Spacer(1, 20))
+            story.append(Paragraph(options.header_text, style_caption))
+            story.append(Spacer(1, 4 * mm))
 
-        # Document title
-        story.append(Paragraph(analysis.name, title_style))
-        story.append(Spacer(1, 20))
-
-        # Add timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        story.append(Paragraph(f"Generated: {timestamp}", caption_style))
-        story.append(Spacer(1, 30))
-
-        # Process each slide
-        for slide_index, slide in enumerate(analysis.slides):
-            slide_content = []
-
-            # Slide title
-            slide_content.append(Paragraph(slide.title, heading_style))
-            slide_content.append(Spacer(1, 10))
-
-            # Process visualizations
-            for viz in slide.visualizations:
-                viz_elements = self._process_visualization(
-                    viz, chart_images, styles, caption_style, comment_style, options
-                )
-                slide_content.extend(viz_elements)
-
-            # Add slide content to story
-            if slide_index < len(analysis.slides) - 1:
-                slide_content.append(PageBreak())
-
-            story.extend(slide_content)
-
-        # Add footer if specified
-        if options.footer_text:
-            story.append(Spacer(1, 30))
-            story.append(Paragraph(options.footer_text, caption_style))
-
-        # Build PDF
-        doc.build(story)
-
-        return output_path
-
-    def _process_visualization(
-        self,
-        visualization: Visualization,
-        chart_images: Optional[Dict[str, bytes]],
-        styles: Any,
-        caption_style: Any,
-        comment_style: Any,
-        options: ExportOptions,
-    ) -> List[Any]:
-        """Process a single visualization into PDF elements."""
-        from reportlab.platypus import Paragraph, Spacer, Image, Table, TableStyle
-        from reportlab.lib import colors
-        from reportlab.lib.units import inch, mm
-
-        elements = []
-
-        if not visualization.config:
-            return elements
-
-        config = visualization.config
-
-        # Handle different visualization types
-        if config.visualization_type == VisualizationType.TABLE:
-            elements.extend(self._process_table(visualization, styles, caption_style))
-        else:
-            # Handle chart types
-            elements.extend(
-                self._process_chart(visualization, chart_images, caption_style, options)
-            )
-
-        # Add comment if enabled
-        if options.include_comments and visualization.comment:
-            elements.append(Paragraph(visualization.comment, comment_style))
-            elements.append(Spacer(1, 10))
-
-        return elements
-
-    def _process_table(
-        self, visualization: Visualization, styles: Any, caption_style: Any
-    ) -> List[Any]:
-        """Process a table visualization."""
-        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib import colors
-
-        elements = []
-
-        if not visualization.data_snapshot:
-            return elements
-
-        data = visualization.data_snapshot.get("data", [])
-        columns = visualization.data_snapshot.get("columns", [])
-
-        if not data or not columns:
-            return elements
-
-        # Build table data
-        table_data = [columns]  # Header row
-
-        # Limit rows for PDF
-        max_rows = 50
-        for row in data[:max_rows]:
-            row_values = [str(row.get(col, ""))[:30] for col in columns]
-            table_data.append(row_values)
-
-        from reportlab.lib.units import inch
-
-        # Create table
-        col_widths = [1.5 * inch] * len(columns)
-        table = Table(table_data, colWidths=col_widths)
-
-        # Style the table
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                    ("TEXTCOLOR", (0, 1), (-1, -1), colors.black),
-                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                    ("FONTSIZE", (0, 1), (-1, -1), 9),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#bdc3c7")),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.white, colors.HexColor("#ecf0f1")],
-                    ),
-                ]
+        story.append(Spacer(1, 20 * mm))
+        story.append(Paragraph(analysis.name, style_title))
+        story.append(
+            Paragraph(
+                f"Exportado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                style_subtitle,
             )
         )
 
-        elements.append(table)
+        total_vizs = sum(
+            1 for s in analysis.slides
+            for v in s.visualizations
+            if v.config and v.config.visualization_type != VisualizationType.MEASURES
+        )
+        story.append(
+            Paragraph(
+                f"{len(analysis.slides)} slide(s) · {total_vizs} visualização(ões)",
+                style_subtitle,
+            )
+        )
+        story.append(Spacer(1, 10 * mm))
 
-        # Add caption
-        if visualization.config.title:
-            elements.append(Paragraph(visualization.config.title, caption_style))
+        # ── Slides ────────────────────────────────────────────────────────────
+        for slide_idx, slide in enumerate(analysis.slides):
+            vizs = [
+                v for v in slide.visualizations
+                if v.config and v.config.visualization_type != VisualizationType.MEASURES
+            ]
+            if not vizs:
+                continue
 
-        elements.append(Spacer(1, 15))
+            if slide_idx > 0:
+                story.append(PageBreak())
 
-        return elements
+            story.append(Paragraph(slide.title, style_slide))
+            story.append(self._hr(doc, page_size, options.margin_mm * mm))
+            story.append(Spacer(1, 4 * mm))
 
-    def _process_chart(
-        self,
-        visualization: Visualization,
-        chart_images: Optional[Dict[str, bytes]],
-        caption_style: Any,
-        options: ExportOptions,
-    ) -> List[Any]:
-        """Process a chart visualization."""
-        from reportlab.platypus import Paragraph, Spacer, Image
+            for viz in vizs:
+                vtype = viz.config.visualization_type
+                viz_title = viz.config.title  # só mostra se o usuário definiu
+
+                if viz_title:
+                    story.append(Paragraph(viz_title, style_viz_title))
+
+                if vtype == VisualizationType.METRIC_CARD and viz.id in metric_data:
+                    story.extend(
+                        self._build_metric(metric_data[viz.id], style_metric_value, style_metric_label)
+                    )
+
+                elif vtype == VisualizationType.TABLE and viz.id in table_data:
+                    story.extend(
+                        self._build_table(table_data[viz.id], doc, page_size, options.margin_mm * mm)
+                    )
+
+                elif viz.id in chart_images:
+                    story.extend(
+                        self._build_chart(chart_images[viz.id], doc, page_size, options.margin_mm * mm)
+                    )
+
+                else:
+                    story.append(
+                        Paragraph("[Visual não disponível]", style_caption)
+                    )
+
+                if options.include_comments and viz.comment:
+                    story.append(Paragraph(f"💬 {viz.comment}", style_comment))
+
+                story.append(Spacer(1, 4 * mm))
+
+        # ── Rodapé ───────────────────────────────────────────────────────────
+        if options.footer_text:
+            story.append(Spacer(1, 8 * mm))
+            story.append(Paragraph(options.footer_text, style_caption))
+
+        doc.build(story)
+        return output_path
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _hr(self, doc, page_size, margin):
+        from reportlab.platypus import HRFlowable
+        usable_width = page_size[0] - 2 * margin
+        return HRFlowable(
+            width=usable_width,
+            thickness=0.5,
+            color="#E2E8F0",
+            spaceAfter=6,
+        )
+
+    def _build_chart(self, img_bytes: bytes, doc, page_size, margin) -> list:
+        from reportlab.platypus import Image
         from reportlab.lib.units import inch
 
-        elements = []
+        usable_width = page_size[0] - 2 * margin
+        max_height = page_size[1] * 0.45  # max 45% da página
 
-        if not chart_images or visualization.id not in chart_images:
-            elements.append(Paragraph("[Chart placeholder]", caption_style))
-            return elements
+        buf = io.BytesIO(img_bytes)
+        img = Image(buf, width=usable_width, height=max_height, kind="proportional")
+        return [img]
 
-        # Get image bytes
-        img_bytes = chart_images[visualization.id]
+    def _build_table(self, tdata: dict, doc, page_size, margin) -> list:
+        from reportlab.platypus import Table, TableStyle, Spacer
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
 
-        # Create image from bytes
-        img_buffer = io.BytesIO(img_bytes)
+        cols = tdata.get("columns", [])
+        rows = tdata.get("data", [])
+        if not cols or not rows:
+            return []
 
-        try:
-            # Determine image size
-            max_width = 6 * inch
-            max_height = 4 * inch
+        usable_width = page_size[0] - 2 * margin
+        col_w = usable_width / max(len(cols), 1)
 
-            img = Image(
-                img_buffer, width=max_width, height=max_height, kind="proportional"
-            )
+        header = [str(c) for c in cols]
+        body = [[str(r.get(c, ""))[:30] for c in cols] for r in rows[:60]]
+        table_data = [header] + body
 
-            elements.append(img)
+        t = Table(table_data, colWidths=[col_w] * len(cols), repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, 0),  colors.HexColor("#7BAFC8")),
+            ("TEXTCOLOR",    (0, 0), (-1, 0),  colors.white),
+            ("FONTNAME",     (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",     (0, 0), (-1, 0),  9),
+            ("BOTTOMPADDING",(0, 0), (-1, 0),  8),
+            ("TOPPADDING",   (0, 0), (-1, 0),  8),
+            ("BACKGROUND",   (0, 1), (-1, -1), colors.white),
+            ("ROWBACKGROUNDS",(0, 1),(-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ("TEXTCOLOR",    (0, 1), (-1, -1), colors.HexColor("#334155")),
+            ("FONTNAME",     (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",     (0, 1), (-1, -1), 8),
+            ("BOTTOMPADDING",(0, 1), (-1, -1), 6),
+            ("TOPPADDING",   (0, 1), (-1, -1), 6),
+            ("GRID",         (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        return [t, Spacer(1, 3 * mm)]
 
-            # Add caption
-            if visualization.config and visualization.config.title:
-                elements.append(Paragraph(visualization.config.title, caption_style))
+    def _build_metric(self, mdata: dict, style_value, style_label) -> list:
+        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
 
-            elements.append(Spacer(1, 15))
+        val = mdata.get("value")
+        title = mdata.get("title", "")
+        agg_labels = {"sum": "Total", "mean": "Média", "count": "Contagem",
+                      "min": "Mínimo", "max": "Máximo"}
+        agg_label = agg_labels.get(mdata.get("agg", "sum"), "")
 
-        except Exception as e:
-            elements.append(Paragraph(f"[Image error: {str(e)}]", caption_style))
+        if val is None:
+            return []
 
-        return elements
+        if isinstance(val, float):
+            if abs(val) >= 1_000_000:
+                formatted = f"{val / 1_000_000:.2f}M"
+            elif abs(val) >= 1_000:
+                formatted = f"{val / 1_000:.2f}K"
+            else:
+                formatted = f"{val:.2f}"
+        else:
+            try:
+                formatted = f"{int(val):,}"
+            except Exception:
+                formatted = str(val)
 
-    def merge_pdfs(self, pdf_paths: List[str], output_path: str) -> str:
-        """Merge multiple PDFs into one."""
-        from PyPDF2 import PdfMerger
-
-        merger = PdfMerger()
-
-        for path in pdf_paths:
-            if os.path.exists(path):
-                merger.append(path)
-
-        merger.write(output_path)
-        merger.close()
-
-        return output_path
+        inner = [
+            [Paragraph(formatted, style_value)],
+            [Paragraph(f"{agg_label} · {title}", style_label)],
+        ]
+        t = Table(inner, colWidths=["100%"])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+            ("BOX",          (0, 0), (-1, -1), 1, colors.HexColor("#BFDBFE")),
+            ("ROUNDEDCORNERS", [8]),
+            ("TOPPADDING",   (0, 0), (-1, -1), 14),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 14),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 20),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 20),
+        ]))
+        return [t, Spacer(1, 4 * mm)]

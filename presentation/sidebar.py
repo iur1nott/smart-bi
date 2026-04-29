@@ -2,9 +2,9 @@
 Sidebar Component - Main navigation and controls.
 """
 
-from typing import Optional, Dict, Any, List, Callable
-import streamlit as st
+from typing import Optional, Callable
 from datetime import datetime
+import streamlit as st
 from utils.session_state import get_state, set_state
 
 
@@ -13,110 +13,149 @@ def render_sidebar(
     on_new_analysis: Callable,
     on_select_analysis: Callable,
     on_settings_click: Callable,
-    on_upload: Callable,  # ADICIONADO: Essencial para a Sprint 1
-) -> Optional[str]:
-    """Render the main sidebar with three sections."""
-    selected_analysis_id = None
-
+    on_upload: Callable,
+) -> None:
+    """Sidebar dark com logo, upload, histórico e configurações."""
     with st.sidebar:
-        # SEÇÃO SUPERIOR - Ações
-        st.markdown("### 📁 Ações")
-        col1, col2 = st.columns(2)
+        # ── Logo / Brand ──────────────────────────────────────────────────────
+        st.markdown(
+            """
+            <div style='padding: 8px 0 20px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 20px;'>
+                <div style='font-size: 1.4rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.3px;'>
+                    📊 Smart BI
+                </div>
+                <div style='font-size: 0.72rem; color: #64748B; margin-top: 2px;'>
+                    Dashboard Builder
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        with col1:
-            if st.button("➕ Novo", use_container_width=True, type="primary"):
-                on_new_analysis()
+        # ── Ações principais ──────────────────────────────────────────────────
+        if st.button("＋  Nova análise", width='stretch', type="primary"):
+            on_new_analysis()
 
-        with col2:
-            if st.button("📂 Abrir", use_container_width=True):
-                set_state("show_uploader", True)
+        st.markdown("<div style='margin: 8px 0;'></div>", unsafe_allow_html=True)
 
-        # Logica do Uploader na Sidebar
+        # Upload inline (toggle)
+        if st.button("📂  Carregar dados", width='stretch'):
+            set_state("show_uploader", not get_state("show_uploader"))
+
         if get_state("show_uploader"):
-            st.markdown("---")
-            st.markdown("#### ⬆️ Carregar Dados")
-            analysis_name = st.text_input("Nome da Análise", value="Nova Análise Comercial")
-            uploaded_file = st.file_uploader("Selecione o Excel/CSV", type=["xlsx", "xls", "csv"])
+            with st.container():
+                st.markdown(
+                    "<div style='background:rgba(255,255,255,.05);border-radius:8px;"
+                    "padding:12px;margin-top:8px;border:1px solid rgba(255,255,255,.1)'>",
+                    unsafe_allow_html=True,
+                )
+                analysis_name = st.text_input(
+                    "Nome", value="Nova Análise", label_visibility="collapsed",
+                    placeholder="Nome da análise…",
+                )
+                uploaded_file = st.file_uploader(
+                    "Excel", type=["xlsx", "xls", "csv"], label_visibility="collapsed"
+                )
+                if uploaded_file:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("✓ Carregar", type="primary", width='stretch'):
+                            on_upload(uploaded_file, analysis_name)
+                            set_state("show_uploader", False)
+                    with c2:
+                        if st.button("✗", width='stretch'):
+                            set_state("show_uploader", False)
+                            st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
 
-            if uploaded_file is not None:
-                if st.button("Confirmar Upload", type="primary", use_container_width=True):
-                    # Chama o processamento no app.py que ativa o mapeador
-                    on_upload(uploaded_file, analysis_name)
-                    set_state("show_uploader", False)
-            
-            if st.button("Cancelar", use_container_width=True):
-                set_state("show_uploader", False)
-                st.rerun()
+        st.markdown(
+            "<div style='border-top:1px solid rgba(255,255,255,.08);margin:20px 0 16px;'></div>",
+            unsafe_allow_html=True,
+        )
 
-        st.markdown("---")
+        # ── Histórico ─────────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='font-size:.7rem;font-weight:600;letter-spacing:.08em;"
+            "color:#475569;text-transform:uppercase;margin-bottom:10px;'>Recentes</div>",
+            unsafe_allow_html=True,
+        )
 
-        # SEÇÃO MÉDIA - Histórico
-        st.markdown("### 📜 Histórico")
         history = analysis_service.get_analysis_history()
-
         if history:
             history.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+            current_id = st.session_state.get("current_analysis_id")
 
-            for item in history[:10]:
-                analysis_id = item.get("id")
+            for item in history[:8]:
+                aid = item.get("id")
                 name = item.get("name", "Sem nome")
-                file_name = item.get("file_name", "Sem arquivo")
-                is_active = st.session_state.get("current_analysis_id") == analysis_id
+                updated = item.get("updated_at", "")
+                is_active = current_id == aid
 
+                try:
+                    dt = datetime.fromisoformat(updated)
+                    date_str = dt.strftime("%d/%m %H:%M")
+                except Exception:
+                    date_str = ""
+
+                active_style = (
+                    "background:rgba(59,130,246,.25);border-color:rgba(59,130,246,.5);"
+                    if is_active else ""
+                )
+                st.markdown(
+                    f"""
+                    <div style='padding:8px 10px;border-radius:6px;margin-bottom:4px;
+                                border:1px solid rgba(255,255,255,.07);cursor:pointer;
+                                transition:background .15s;{active_style}'
+                         onclick='void(0)'>
+                        <div style='font-size:.83rem;font-weight:{"600" if is_active else "400"};
+                                    color:{"#93C5FD" if is_active else "#CBD5E1"};
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>
+                            {"▶ " if is_active else ""}{name}
+                        </div>
+                        <div style='font-size:.7rem;color:#475569;margin-top:2px;'>{date_str}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                # Botão invisível que cobre o card (Streamlit não suporte onclick em divs)
                 if st.button(
-                    f"{'▶ ' if is_active else ''}{name}",
-                    key=f"history_{analysis_id}",
-                    use_container_width=True,
+                    name[:28],
+                    key=f"history_{aid}",
+                    width='stretch',
                     type="primary" if is_active else "secondary",
                 ):
-                    selected_analysis_id = analysis_id
-                    on_select_analysis(analysis_id)
-
-                st.caption(f"📄 {file_name}")
+                    on_select_analysis(aid)
         else:
-            st.info("Nenhuma análise encontrada.")
+            st.markdown(
+                "<div style='font-size:.8rem;color:#475569;padding:8px 0;'>"
+                "Nenhuma análise ainda.</div>",
+                unsafe_allow_html=True,
+            )
 
-        st.markdown("---")
-
-        # SEÇÃO INFERIOR - Configurações
-        st.markdown("### ⚙️ Configurações")
-        if st.button("⚙️ Definições", use_container_width=True):
-            on_settings_click()
+        # ── Rodapé ────────────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='border-top:1px solid rgba(255,255,255,.08);margin:20px 0 12px;'></div>",
+            unsafe_allow_html=True,
+        )
 
         settings = analysis_service.get_settings()
-        auto_save = st.toggle("Salvamento Automático", value=settings.get("auto_save", True))
+        auto_save = st.toggle(
+            "Auto-save", value=settings.get("auto_save", True),
+            help="Salva automaticamente após cada alteração",
+        )
         if auto_save != settings.get("auto_save"):
             analysis_service.update_settings({"auto_save": auto_save})
 
-        st.caption("Smart-BI v1.0.0")
+        if st.button("⚙️  Definições", width='stretch'):
+            on_settings_click()
 
-    return selected_analysis_id
+        st.markdown(
+            "<div style='font-size:.68rem;color:#334155;text-align:center;margin-top:12px;'>"
+            "Smart BI v1.0.0</div>",
+            unsafe_allow_html=True,
+        )
 
-def render_secondary_sidebar(
-    data_schema: Optional[Any], on_add_visualization: Callable, visible: bool = True
-) -> None:
-    """Render secondary sidebar with visualization options."""
-    if not visible or not data_schema:
-        return
 
-    with st.expander("📊 Adicionar Visualização", expanded=True):
-        from domain.entities import VisualizationType
-
-        chart_types = [
-            ("📊 Barras", VisualizationType.BAR_CHART),
-            ("📈 Linhas", VisualizationType.LINE_CHART),
-            ("🥧 Pizza", VisualizationType.PIE_CHART),
-            ("📉 Área", VisualizationType.AREA_CHART),
-            ("⚬ Dispersão", VisualizationType.SCATTER_PLOT),
-            ("▊ Histograma", VisualizationType.HISTOGRAM),
-            ("📋 Tabela", VisualizationType.TABLE),
-            ("💳 Métrica", VisualizationType.METRIC_CARD),
-        ]
-
-        cols = st.columns(2) # Ajustado para 2 colunas para melhor leitura no Windows
-        for i, (label, viz_type) in enumerate(chart_types):
-            with cols[i % 2]:
-                if st.button(
-                    label, key=f"add_{viz_type.value}", use_container_width=True
-                ):
-                    on_add_visualization(viz_type)
+def render_secondary_sidebar(data_schema, on_add_visualization, visible=True):
+    """Legacy — mantido por compatibilidade, não usado no layout atual."""
+    pass

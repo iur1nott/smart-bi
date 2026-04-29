@@ -1,0 +1,961 @@
+{
+  "id": "d8f89c32-a404-450f-9b18-1582ad398e20",
+  "name": "Planilha Pok\u00e9mon para Projeto de Dados",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "ID",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Nome",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 2",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Total",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "HP",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Attack",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Defense",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Atk",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Def",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Speed",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Gera\u00e7\u00e3o",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Lend\u00e1rio",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Cor",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Taxa de Captura",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 25,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "11efce51-80b2-4b47-ba82-6dc78ccf4494",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "7251e336-f622-4b7a-bcd3-17c8b7c1e1c7",
+          "config": {
+            "visualization_type": "metric_card",
+            "title": "Sum of ID",
+            "x_column": null,
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "a1ba7d6b-4093-4451-bae0-1e4cc620aed5",
+          "config": {
+            "visualization_type": "table",
+            "title": "Tabela de Dados",
+            "x_column": "ID",
+            "y_column": null,
+            "y_columns": [
+              "ID",
+              "Nome",
+              "Tipo 1",
+              "Tipo 2",
+              "Total"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": {
+            "data": [
+              {
+                "ID": 1.0,
+                "Nome": "Bulbasaur",
+                "Tipo 1": "Grass",
+                "Tipo 2": "Poison",
+                "Total": 318.0,
+                "HP": 45.0,
+                "Attack": 49.0,
+                "Defense": 49.0,
+                "Sp. Atk": 65.0,
+                "Sp. Def": 65.0,
+                "Speed": 45.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Green",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 6.0,
+                "Nome": "Charizard",
+                "Tipo 1": "Fire",
+                "Tipo 2": "Flying",
+                "Total": 534.0,
+                "HP": 78.0,
+                "Attack": 84.0,
+                "Defense": 78.0,
+                "Sp. Atk": 109.0,
+                "Sp. Def": 85.0,
+                "Speed": 100.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Red",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 9.0,
+                "Nome": "Blastoise",
+                "Tipo 1": "Water",
+                "Tipo 2": null,
+                "Total": 530.0,
+                "HP": 79.0,
+                "Attack": 83.0,
+                "Defense": 100.0,
+                "Sp. Atk": 85.0,
+                "Sp. Def": 105.0,
+                "Speed": 78.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 25.0,
+                "Nome": "Pikachu",
+                "Tipo 1": "Electric",
+                "Tipo 2": null,
+                "Total": 320.0,
+                "HP": 35.0,
+                "Attack": 55.0,
+                "Defense": 40.0,
+                "Sp. Atk": 50.0,
+                "Sp. Def": 50.0,
+                "Speed": 90.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Yellow",
+                "Taxa de Captura": 190.0
+              },
+              {
+                "ID": 39.0,
+                "Nome": "Jigglypuff",
+                "Tipo 1": "Normal",
+                "Tipo 2": "Fairy",
+                "Total": 270.0,
+                "HP": 115.0,
+                "Attack": 45.0,
+                "Defense": 20.0,
+                "Sp. Atk": 45.0,
+                "Sp. Def": 25.0,
+                "Speed": 20.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Pink",
+                "Taxa de Captura": 170.0
+              },
+              {
+                "ID": 94.0,
+                "Nome": "Gengar",
+                "Tipo 1": "Ghost",
+                "Tipo 2": "Poison",
+                "Total": 500.0,
+                "HP": 60.0,
+                "Attack": 65.0,
+                "Defense": 60.0,
+                "Sp. Atk": 130.0,
+                "Sp. Def": 75.0,
+                "Speed": 110.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Purple",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 130.0,
+                "Nome": "Gyarados",
+                "Tipo 1": "Water",
+                "Tipo 2": "Flying",
+                "Total": 540.0,
+                "HP": 95.0,
+                "Attack": 125.0,
+                "Defense": 79.0,
+                "Sp. Atk": 60.0,
+                "Sp. Def": 100.0,
+                "Speed": 81.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 131.0,
+                "Nome": "Lapras",
+                "Tipo 1": "Water",
+                "Tipo 2": "Ice",
+                "Total": 535.0,
+                "HP": 130.0,
+                "Attack": 85.0,
+                "Defense": 80.0,
+                "Sp. Atk": 85.0,
+                "Sp. Def": 95.0,
+                "Speed": 60.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 143.0,
+                "Nome": "Snorlax",
+                "Tipo 1": "Normal",
+                "Tipo 2": null,
+                "Total": 540.0,
+                "HP": 160.0,
+                "Attack": 110.0,
+                "Defense": 65.0,
+                "Sp. Atk": 65.0,
+                "Sp. Def": 110.0,
+                "Speed": 30.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Black",
+                "Taxa de Captura": 25.0
+              },
+              {
+                "ID": 149.0,
+                "Nome": "Dragonite",
+                "Tipo 1": "Dragon",
+                "Tipo 2": "Flying",
+                "Total": 600.0,
+                "HP": 91.0,
+                "Attack": 134.0,
+                "Defense": 95.0,
+                "Sp. Atk": 100.0,
+                "Sp. Def": 100.0,
+                "Speed": 80.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Brown",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 150.0,
+                "Nome": "Mewtwo",
+                "Tipo 1": "Psychic",
+                "Tipo 2": null,
+                "Total": 680.0,
+                "HP": 106.0,
+                "Attack": 110.0,
+                "Defense": 90.0,
+                "Sp. Atk": 154.0,
+                "Sp. Def": 90.0,
+                "Speed": 130.0,
+                "Gera\u00e7\u00e3o": 1.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Purple",
+                "Taxa de Captura": 3.0
+              },
+              {
+                "ID": 181.0,
+                "Nome": "Ampharos",
+                "Tipo 1": "Electric",
+                "Tipo 2": null,
+                "Total": 510.0,
+                "HP": 90.0,
+                "Attack": 75.0,
+                "Defense": 85.0,
+                "Sp. Atk": 115.0,
+                "Sp. Def": 90.0,
+                "Speed": 55.0,
+                "Gera\u00e7\u00e3o": 2.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Yellow",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 212.0,
+                "Nome": "Scizor",
+                "Tipo 1": "Bug",
+                "Tipo 2": "Steel",
+                "Total": 500.0,
+                "HP": 70.0,
+                "Attack": 130.0,
+                "Defense": 100.0,
+                "Sp. Atk": 55.0,
+                "Sp. Def": 80.0,
+                "Speed": 65.0,
+                "Gera\u00e7\u00e3o": 2.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Red",
+                "Taxa de Captura": 25.0
+              },
+              {
+                "ID": 248.0,
+                "Nome": "Tyranitar",
+                "Tipo 1": "Rock",
+                "Tipo 2": "Dark",
+                "Total": 600.0,
+                "HP": 100.0,
+                "Attack": 134.0,
+                "Defense": 110.0,
+                "Sp. Atk": 95.0,
+                "Sp. Def": 100.0,
+                "Speed": 61.0,
+                "Gera\u00e7\u00e3o": 2.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Green",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 249.0,
+                "Nome": "Lugia",
+                "Tipo 1": "Psychic",
+                "Tipo 2": "Flying",
+                "Total": 680.0,
+                "HP": 106.0,
+                "Attack": 90.0,
+                "Defense": 130.0,
+                "Sp. Atk": 90.0,
+                "Sp. Def": 154.0,
+                "Speed": 110.0,
+                "Gera\u00e7\u00e3o": 2.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "White",
+                "Taxa de Captura": 3.0
+              },
+              {
+                "ID": 257.0,
+                "Nome": "Blaziken",
+                "Tipo 1": "Fire",
+                "Tipo 2": "Fighting",
+                "Total": 530.0,
+                "HP": 80.0,
+                "Attack": 120.0,
+                "Defense": 70.0,
+                "Sp. Atk": 110.0,
+                "Sp. Def": 70.0,
+                "Speed": 80.0,
+                "Gera\u00e7\u00e3o": 3.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Red",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 282.0,
+                "Nome": "Gardevoir",
+                "Tipo 1": "Psychic",
+                "Tipo 2": "Fairy",
+                "Total": 518.0,
+                "HP": 68.0,
+                "Attack": 65.0,
+                "Defense": 65.0,
+                "Sp. Atk": 125.0,
+                "Sp. Def": 115.0,
+                "Speed": 80.0,
+                "Gera\u00e7\u00e3o": 3.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "White",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 384.0,
+                "Nome": "Rayquaza",
+                "Tipo 1": "Dragon",
+                "Tipo 2": "Flying",
+                "Total": 680.0,
+                "HP": 105.0,
+                "Attack": 150.0,
+                "Defense": 90.0,
+                "Sp. Atk": 150.0,
+                "Sp. Def": 90.0,
+                "Speed": 95.0,
+                "Gera\u00e7\u00e3o": 3.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Green",
+                "Taxa de Captura": 3.0
+              },
+              {
+                "ID": 445.0,
+                "Nome": "Garchomp",
+                "Tipo 1": "Dragon",
+                "Tipo 2": "Ground",
+                "Total": 600.0,
+                "HP": 108.0,
+                "Attack": 130.0,
+                "Defense": 95.0,
+                "Sp. Atk": 80.0,
+                "Sp. Def": 85.0,
+                "Speed": 102.0,
+                "Gera\u00e7\u00e3o": 4.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 448.0,
+                "Nome": "Lucario",
+                "Tipo 1": "Fighting",
+                "Tipo 2": "Steel",
+                "Total": 525.0,
+                "HP": 70.0,
+                "Attack": 110.0,
+                "Defense": 70.0,
+                "Sp. Atk": 115.0,
+                "Sp. Def": 70.0,
+                "Speed": 90.0,
+                "Gera\u00e7\u00e3o": 4.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 475.0,
+                "Nome": "Gallade",
+                "Tipo 1": "Psychic",
+                "Tipo 2": "Fighting",
+                "Total": 518.0,
+                "HP": 68.0,
+                "Attack": 125.0,
+                "Defense": 65.0,
+                "Sp. Atk": 65.0,
+                "Sp. Def": 115.0,
+                "Speed": 80.0,
+                "Gera\u00e7\u00e3o": 4.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "White",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 635.0,
+                "Nome": "Hydreigon",
+                "Tipo 1": "Dark",
+                "Tipo 2": "Dragon",
+                "Total": 600.0,
+                "HP": 92.0,
+                "Attack": 105.0,
+                "Defense": 90.0,
+                "Sp. Atk": 125.0,
+                "Sp. Def": 90.0,
+                "Speed": 98.0,
+                "Gera\u00e7\u00e3o": 5.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Blue",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 700.0,
+                "Nome": "Sylveon",
+                "Tipo 1": "Fairy",
+                "Tipo 2": null,
+                "Total": 525.0,
+                "HP": 95.0,
+                "Attack": 65.0,
+                "Defense": 65.0,
+                "Sp. Atk": 110.0,
+                "Sp. Def": 130.0,
+                "Speed": 60.0,
+                "Gera\u00e7\u00e3o": 6.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Pink",
+                "Taxa de Captura": 45.0
+              },
+              {
+                "ID": 745.0,
+                "Nome": "Lycanroc",
+                "Tipo 1": "Rock",
+                "Tipo 2": null,
+                "Total": 487.0,
+                "HP": 75.0,
+                "Attack": 115.0,
+                "Defense": 65.0,
+                "Sp. Atk": 55.0,
+                "Sp. Def": 65.0,
+                "Speed": 112.0,
+                "Gera\u00e7\u00e3o": 7.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "Brown",
+                "Taxa de Captura": 90.0
+              },
+              {
+                "ID": 898.0,
+                "Nome": "Calyrex",
+                "Tipo 1": "Psychic",
+                "Tipo 2": "Grass",
+                "Total": 500.0,
+                "HP": 100.0,
+                "Attack": 80.0,
+                "Defense": 80.0,
+                "Sp. Atk": 80.0,
+                "Sp. Def": 80.0,
+                "Speed": 80.0,
+                "Gera\u00e7\u00e3o": 8.0,
+                "Lend\u00e1rio": NaN,
+                "Cor": "White",
+                "Taxa de Captura": 3.0
+              }
+            ],
+            "columns": [
+              "ID",
+              "Nome",
+              "Tipo 1",
+              "Tipo 2",
+              "Total",
+              "HP",
+              "Attack",
+              "Defense",
+              "Sp. Atk",
+              "Sp. Def"
+            ]
+          }
+        },
+        {
+          "id": "ccd7ea85-51db-417b-a6cf-8c7827f420aa",
+          "config": {
+            "visualization_type": "heatmap",
+            "title": "Heatmap",
+            "x_column": "ID",
+            "y_column": "Nome",
+            "y_columns": [],
+            "color_column": "ID",
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "2249b7a2-901e-4695-8228-5af968593c58",
+          "config": {
+            "visualization_type": "box_plot",
+            "title": "Distribution of ID",
+            "x_column": null,
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "e266f7e6-3384-40b6-ad5d-d59df17610ba",
+          "config": {
+            "visualization_type": "histogram",
+            "title": "Distribution of ID",
+            "x_column": "ID",
+            "y_column": null,
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "43c1afff-96a1-40a7-adca-cd66354c2328",
+          "config": {
+            "visualization_type": "histogram",
+            "title": "Distribution of ID",
+            "x_column": "ID",
+            "y_column": null,
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "12d5267a-4317-496c-8c91-37f4a0e33eae",
+          "config": {
+            "visualization_type": "scatter_plot",
+            "title": "Total vs ID",
+            "x_column": "ID",
+            "y_column": "Total",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "ec562163-7217-485c-9e5f-92dd1c4f93be",
+          "config": {
+            "visualization_type": "area_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "94cd612c-222f-4403-b26f-13b62b96c86d",
+          "config": {
+            "visualization_type": "area_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "26e44df2-18a3-4ce2-8e8f-34b159ed2a6a",
+          "config": {
+            "visualization_type": "pie_chart",
+            "title": "Distribui\u00e7\u00e3o de Nome",
+            "x_column": "Nome",
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "e6ef1604-8a2d-4ac9-8e3c-4293b43a2a97",
+          "config": {
+            "visualization_type": "line_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": "ID",
+            "y_columns": [],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "5d9e84c2-579b-4884-8d65-94d1929574fd",
+          "config": {
+            "visualization_type": "bar_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": null,
+            "y_columns": [
+              "ID"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        },
+        {
+          "id": "d82570e9-5757-48cf-ac1d-958d257ed9ab",
+          "config": {
+            "visualization_type": "column_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": null,
+            "y_columns": [
+              "ID"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-04-25T12:34:33.324039",
+      "updated_at": "2026-04-25T12:36:05.958099"
+    }
+  ],
+  "created_at": "2026-04-25T12:34:33.323974",
+  "updated_at": "2026-04-25T12:34:33.324047",
+  "file_path": null,
+  "measures": []
+}

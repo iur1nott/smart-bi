@@ -455,19 +455,6 @@ class DataService:
                 )
                 result["format"] = "number"
 
-        elif config.visualization_type == VisualizationType.HEATMAP:
-            if config.x_column and config.y_column:
-                pivot_df = df.pivot(
-                    values=config.y_column,
-                    index=config.x_column,
-                    columns=config.color_column
-                    if config.color_column
-                    else config.x_column,
-                )
-                result["data"] = pivot_df.to_numpy().tolist()
-                result["x_labels"] = pivot_df.columns
-                result["y_labels"] = pivot_df[config.x_column].to_list()
-
         return result
 
     def get_column_unique_values(
@@ -564,4 +551,39 @@ class DataService:
         """
         if hasattr(self, "_data_cache"):
             return self._data_cache.get(analysis_id)
-        return None    
+        return None
+
+    def compute_measures(self, df: pl.DataFrame, measures: list) -> pl.DataFrame:
+        """
+        Adiciona colunas calculadas (medidas) ao DataFrame.
+        Cada medida deve ter "name" e "expression" (sintaxe [Nome da Coluna]).
+        Medidas inválidas são silenciosamente ignoradas.
+        """
+        for measure in measures:
+            name = (measure.get("name") or "").strip()
+            expr_str = (measure.get("expression") or "").strip()
+            if not name or not expr_str:
+                continue
+            try:
+                expr = self._parse_measure_expr(df, expr_str)
+                df = df.with_columns(expr.alias(name))
+            except Exception:
+                pass
+        return df
+
+    def _parse_measure_expr(self, df: pl.DataFrame, expr_str: str) -> pl.Expr:
+        """
+        Converte expressão com [Coluna] para Polars Expr.
+        Sintaxe suportada: [Nome da Coluna] com +, -, *, / e parênteses.
+        Exemplo: [Receita] / [Quantidade]
+        """
+        import re
+        py_expr = re.sub(
+            r'\[([^\]]+)\]',
+            lambda m: f'pl.col("{m.group(1)}")',
+            expr_str,
+        )
+        result = eval(py_expr, {"__builtins__": {}}, {"pl": pl})
+        if not isinstance(result, pl.Expr):
+            raise ValueError("Expressão deve resultar em uma coluna Polars")
+        return result

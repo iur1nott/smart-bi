@@ -30,34 +30,50 @@ _COLOR_SCHEMES: list = [
 def render_widget_palette(
     data_schema: Optional[DataSchema], on_add_visualization: Callable
 ) -> None:
-    """Render the widget palette for adding visualizations."""
-    st.markdown("### ➕ Add Visualization")
-
+    """Palette vertical de adição de visualizações (painel direito)."""
     if not data_schema:
-        st.info("📁 Upload data first")
+        st.info("📁 Carregue dados para adicionar visualizações")
         return
 
-    chart_types = [
-        ("📊 Gráfico de Colunas", VisualizationType.COLUMN_CHART),
-        ("📉 Barras Horizontais",  VisualizationType.BAR_CHART),
-        ("📈 Linha",              VisualizationType.LINE_CHART),
-        ("🥧 Pizza",              VisualizationType.PIE_CHART),
-        ("🏔 Área",               VisualizationType.AREA_CHART),
-        ("⚬ Dispersão",           VisualizationType.SCATTER_PLOT),
-        ("▊ Histograma",          VisualizationType.HISTOGRAM),
-        ("📦 Box Plot",           VisualizationType.BOX_PLOT),
-        ("🔥 Mapa de Calor",      VisualizationType.HEATMAP),
-        ("📋 Tabela",             VisualizationType.TABLE),
-        ("💳 Cartão de Métrica",  VisualizationType.METRIC_CARD),
+    _GROUPS = [
+        ("Medidas", [
+            ("📐 Medidas",    VisualizationType.MEASURES),
+        ]),
+        ("Gráficos", [
+            ("📊 Colunas",   VisualizationType.COLUMN_CHART),
+            ("📉 Barras",    VisualizationType.BAR_CHART),
+            ("📈 Linha",     VisualizationType.LINE_CHART),
+            ("🥧 Pizza",    VisualizationType.PIE_CHART),
+            ("🏔 Área",     VisualizationType.AREA_CHART),
+            ("⚬ Dispersão", VisualizationType.SCATTER_PLOT),
+            ("▊ Histograma",VisualizationType.HISTOGRAM),
+            ("📦 Box",       VisualizationType.BOX_PLOT),
+        ]),
+        ("Outros", [
+            ("📋 Tabela",    VisualizationType.TABLE),
+            ("💳 Métrica",   VisualizationType.METRIC_CARD),
+        ]),
     ]
 
-    for label, viz_type in chart_types:
-        if st.button(label, key=f"widget_{viz_type.value}", use_container_width=True):
-            # Store the selected type and show config dialog
-            st.session_state.configuring_new_viz = viz_type
-            st.rerun()
+    for group_label, items in _GROUPS:
+        st.markdown(
+            f"<div style='font-size:.68rem;color:#94A3B8;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:.06em;"
+            f"margin:10px 0 4px;'>{group_label}</div>",
+            unsafe_allow_html=True,
+        )
+        for label, viz_type in items:
+            if st.button(
+                label,
+                key=f"widget_{viz_type.value}",
+                width='stretch',
+                help=viz_type.value.replace("_", " ").title(),
+            ):
+                st.session_state.configuring_new_viz = viz_type
+                st.rerun()
 
 
+@st.dialog("Configurar Visualização", width="large")
 def render_visualization_config_dialog(
     viz_type: VisualizationType,
     data_schema: DataSchema,
@@ -65,22 +81,8 @@ def render_visualization_config_dialog(
     on_save: Callable = None,
     on_cancel: Callable = None,
     is_new: bool = False,
-) -> Optional[VisualizationConfig]:
-    """
-    Render a full configuration dialog for a visualization.
-
-    Args:
-        viz_type: Type of visualization to configure
-        data_schema: Schema of available data
-        existing_config: Existing configuration to edit (for edits)
-        on_save: Callback when configuration is saved
-        on_cancel: Callback when configuration is cancelled
-        is_new: Whether this is a new visualization
-
-    Returns:
-        Configured VisualizationConfig or None
-    """
-    # Get column options
+) -> None:
+    """Modal de configuração de visualização usando st.dialog."""
     numeric_cols = data_schema.get_numeric_columns()
     categorical_cols = data_schema.get_categorical_columns()
     datetime_cols = [
@@ -88,89 +90,86 @@ def render_visualization_config_dialog(
     ]
     all_cols = data_schema.get_column_names()
 
-    # Dialog header
-    action = "Configure New" if is_new else "Edit"
-    st.markdown(f"### {action} {viz_type.value.replace('_', ' ').title()}")
+    # Ícone e label por tipo
+    _ICONS = {
+        VisualizationType.COLUMN_CHART: "📊",
+        VisualizationType.BAR_CHART:    "📉",
+        VisualizationType.LINE_CHART:   "📈",
+        VisualizationType.PIE_CHART:    "🥧",
+        VisualizationType.AREA_CHART:   "🏔",
+        VisualizationType.SCATTER_PLOT: "⚬",
+        VisualizationType.HISTOGRAM:    "▊",
+        VisualizationType.BOX_PLOT:     "📦",
+        VisualizationType.TABLE:        "📋",
+        VisualizationType.METRIC_CARD:  "💳",
+    }
+    icon = _ICONS.get(viz_type, "📊")
+    action = "Novo" if is_new else "Editar"
+    label = viz_type.value.replace("_", " ").title()
+    st.markdown(
+        f"<span style='font-size:1.05rem;font-weight:600;color:#1E293B'>"
+        f"{icon} {action} — {label}</span>",
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
 
     config = None
 
-    # Title input (for all types)
     default_title = existing_config.title if existing_config else ""
     title = st.text_input(
-        "📊 Visualization Title",
+        "Título",
         value=default_title,
-        placeholder="Enter a title for this visualization",
+        placeholder="Dê um título para esta visualização…",
         key="config_title_input",
     )
 
-    # Configuration based on visualization type
     if viz_type == VisualizationType.TABLE:
         config = _configure_table_ui(title, all_cols, existing_config)
-
     elif viz_type == VisualizationType.METRIC_CARD:
         config = _configure_metric_card_ui(title, numeric_cols, existing_config)
-
     elif viz_type == VisualizationType.PIE_CHART:
         config = _configure_pie_chart_ui(
             title, all_cols, numeric_cols, categorical_cols, existing_config
         )
-
     elif viz_type in (VisualizationType.COLUMN_CHART, VisualizationType.BAR_CHART):
         config = _configure_bar_column_ui(
             title, viz_type, all_cols, numeric_cols, categorical_cols, existing_config
         )
-
     elif viz_type == VisualizationType.LINE_CHART:
         config = _configure_line_chart_ui(
             title, all_cols, numeric_cols, categorical_cols, datetime_cols, existing_config,
         )
-
     elif viz_type == VisualizationType.AREA_CHART:
         config = _configure_area_chart_ui(
             title, all_cols, numeric_cols, categorical_cols, existing_config
         )
-
     elif viz_type == VisualizationType.SCATTER_PLOT:
         config = _configure_scatter_plot_ui(
             title, numeric_cols, all_cols, existing_config
         )
-
     elif viz_type == VisualizationType.HISTOGRAM:
         config = _configure_histogram_ui(
             title, numeric_cols, categorical_cols, existing_config
         )
-
     elif viz_type == VisualizationType.BOX_PLOT:
         config = _configure_box_plot_ui(
             title, numeric_cols, categorical_cols, existing_config
         )
-
-    elif viz_type == VisualizationType.HEATMAP:
-        config = _configure_heatmap_ui(title, all_cols, numeric_cols, existing_config)
-
     else:
-        # Default fallback
         config = _configure_default_ui(
             title, all_cols, numeric_cols, viz_type, existing_config
         )
 
-    # Action buttons
     st.markdown("---")
     col1, col2 = st.columns(2)
-
     with col1:
-        if st.button("✓ Apply Configuration", type="primary", use_container_width=True):
+        if st.button("✓ Aplicar", type="primary", width='stretch'):
             if on_save and config:
                 on_save(config)
-                return config
-
     with col2:
-        if st.button("✗ Cancel", use_container_width=True):
+        if st.button("✗ Cancelar", width='stretch'):
             if on_cancel:
                 on_cancel()
-
-    return config
 
 
 def _configure_table_ui(
@@ -180,25 +179,23 @@ def _configure_table_ui(
     st.markdown("**📋 Table Configuration**")
     st.markdown("Select columns to display in the table:")
 
-    # Get default selected columns
-    default_cols = all_cols[:5]
-    if existing:
-        default_cols = []
-        if existing.x_column:
-            default_cols.append(existing.x_column)
-        if existing.y_column and existing.y_column not in default_cols:
-            default_cols.append(existing.y_column)
+    # Restaura colunas salvas: usa y_columns (lista completa) ou fallback p/ campos antigos
+    if existing and existing.y_columns:
+        default_cols = [c for c in existing.y_columns if c in all_cols]
+    elif existing:
+        default_cols = [c for c in [existing.x_column, existing.y_column, existing.color_column] if c]
+    else:
+        default_cols = all_cols[:5]
 
     selected_cols = st.multiselect(
-        "Columns to Display", all_cols, default=default_cols, key="table_cols_select"
+        "📋 Colunas a exibir", all_cols, default=default_cols, key="table_cols_select"
     )
 
     return VisualizationConfig(
         visualization_type=VisualizationType.TABLE,
-        title=title if title else "Data Table",
+        title=title if title else "Tabela de Dados",
         x_column=selected_cols[0] if selected_cols else None,
-        y_column=selected_cols[1] if len(selected_cols) > 1 else None,
-        color_column=selected_cols[2] if len(selected_cols) > 2 else None,
+        y_columns=selected_cols,  # todas as colunas selecionadas
     )
 
 
@@ -877,7 +874,7 @@ def render_data_preview(data_schema: DataSchema, df: pl.DataFrame) -> None:
                     )
 
     with st.expander("📊 Sample Data", expanded=False):
-        st.dataframe(df.head(10).to_pandas(), use_container_width=True)
+        st.dataframe(df.head(10).to_pandas(), width='stretch')
 
 import streamlit as st
 
@@ -894,16 +891,33 @@ _COLUMN_TYPE_TO_LABEL = {
 _MAPPER_OPTIONS = ["Numérico", "Data/Hora", "Categoria", "Texto"]
 
 
+_TYPE_ICONS = {
+    "Numérico":  "🔢",
+    "Data/Hora": "📅",
+    "Categoria": "🏷️",
+    "Texto":     "📝",
+}
+
+_TYPE_COLORS = {
+    "Numérico":  "#EFF6FF",
+    "Data/Hora": "#F0FDF4",
+    "Categoria": "#FFF7ED",
+    "Texto":     "#F8FAFC",
+}
+
+_TYPE_BORDERS = {
+    "Numérico":  "#BFDBFE",
+    "Data/Hora": "#BBF7D0",
+    "Categoria": "#FED7AA",
+    "Texto":     "#E2E8F0",
+}
+
+
 def render_column_mapper(df, schema=None):
     """
-    Interface para o usuário confirmar/ajustar o tipo de cada coluna.
-    Usa os tipos já detectados pelo DataService como sugestão padrão.
+    Cards de mapeamento de colunas — mostra tipo detectado e permite ajuste.
     Retorna {nome_original: label_escolhido} para todas as colunas.
     """
-    st.subheader("🛠️ Mapeamento de Colunas")
-    st.info("Tipos detectados automaticamente pelo sistema. Ajuste se necessário.")
-
-    # Monta índice {col_name: ColumnType} a partir do schema pré-detectado (se disponível)
     detected: dict = {}
     if schema is not None:
         for col_obj in schema.columns:
@@ -913,20 +927,45 @@ def render_column_mapper(df, schema=None):
     cols_ui = st.columns(2)
 
     for i, col in enumerate(df.columns):
+        col_type = detected.get(col, ColumnType.UNKNOWN)
+        label_detectado = _COLUMN_TYPE_TO_LABEL.get(col_type, "Texto")
+        index_sugerido = _MAPPER_OPTIONS.index(label_detectado)
+
+        # Amostra de valores
+        try:
+            samples = df[col].drop_nulls().head(3).cast(pl.String).to_list()
+            sample_str = " · ".join(str(s)[:18] for s in samples) if samples else "—"
+        except Exception:
+            sample_str = "—"
+
         with cols_ui[i % 2]:
-            # Determina o label padrão: usa o tipo detectado pelo DataService
-            col_type = detected.get(col, ColumnType.UNKNOWN)
-            label_detectado = _COLUMN_TYPE_TO_LABEL.get(col_type, "Texto")
-            index_sugerido = _MAPPER_OPTIONS.index(label_detectado)
+            bg = _TYPE_COLORS.get(label_detectado, "#F8FAFC")
+            border = _TYPE_BORDERS.get(label_detectado, "#E2E8F0")
+            icon = _TYPE_ICONS.get(label_detectado, "📄")
+
+            st.markdown(
+                f"""
+                <div style='background:{bg};border:1px solid {border};border-radius:8px;
+                            padding:10px 12px 4px;margin-bottom:4px;'>
+                    <div style='font-size:.82rem;font-weight:600;color:#1E293B;'>
+                        {icon} {col}
+                    </div>
+                    <div style='font-size:.72rem;color:#94A3B8;margin-bottom:6px;
+                                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>
+                        {sample_str}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
             choice = st.selectbox(
                 col,
                 _MAPPER_OPTIONS,
                 index=index_sugerido,
                 key=f"map_{col}",
-                help=f"Tipo detectado automaticamente: **{label_detectado}**",
+                label_visibility="collapsed",
             )
-
             mapping[col] = choice
 
     return mapping

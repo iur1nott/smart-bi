@@ -74,51 +74,234 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-    /* Main content styling */
+    /* ── Design tokens — pastel palette ────────────────────────────────────── */
+    :root {
+        --primary:      #7BAFC8;
+        --primary-dark: #5B8FA8;
+        --surface:      #FAF9F6;
+        --surface-alt:  #F0EDE8;
+        --border:       #DDD8D0;
+        --text-main:    #2C2B28;
+        --text-muted:   #7A7870;
+        --success:      #80B498;
+        --danger:       #C4806A;
+        --warning:      #C4A460;
+        --radius:       10px;
+        --radius-sm:    6px;
+        --shadow-sm:    0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03);
+        --shadow-md:    0 4px 12px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.03);
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
     .main .block-container {
-        padding-top: 2rem;
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+        background-color: var(--surface);
+    }
+    [data-testid="stAppViewContainer"] {
+        background-color: var(--surface);
     }
 
-    /* Card styling */
-    .stMetric > div {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #e9ecef;
-    }
-
-    /* Button styling */
-    .stButton > button {
-        border-radius: 0.5rem;
-    }
-
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        font-weight: bold;
-        color: #2c3e50;
-    }
-
-    /* Sidebar styling */
+    /* ── Sidebar ───────────────────────────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background-color: #f8f9fa;
+        background: linear-gradient(180deg, #2E2C2A 0%, #1C1B18 100%);
+    }
+    section[data-testid="stSidebar"] * {
+        color: #C8C4BC !important;
+    }
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #EDE9E3 !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.10);
+        color: #C8C4BC !important;
+        border-radius: var(--radius-sm);
+        transition: background .15s;
+    }
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255,255,255,.11);
+    }
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        background: rgba(255,255,255,.04);
+        border: 1px dashed rgba(255,255,255,.18);
+        border-radius: var(--radius-sm);
     }
 
-    /* Dataframe styling */
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+    .stButton > button {
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        transition: all .15s ease;
+        border: 1px solid var(--border);
+        background: white;
+        color: var(--text-main) !important;
+        font-size: 0.83rem;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+        background: var(--surface-alt);
+    }
+    .stButton > button[kind="primary"] {
+        background: var(--primary);
+        border-color: var(--primary-dark);
+        color: white !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: var(--primary-dark);
+        box-shadow: 0 4px 12px rgba(91,143,168,.30);
+    }
+
+    /* ── Inputs & Selects ──────────────────────────────────────────────────── */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div,
+    .stNumberInput > div > div > input {
+        border-radius: var(--radius-sm) !important;
+        border-color: var(--border) !important;
+        background-color: white !important;
+        color: var(--text-main) !important;
+        font-size: 0.875rem;
+    }
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div:focus-within {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px rgba(123,175,200,.18) !important;
+    }
+
+    /* ── Expanders (Filtros / Comentários) ─────────────────────────────────── */
+    .streamlit-expanderHeader {
+        font-weight: 600;
+        font-size: 0.82rem;
+        color: var(--text-muted) !important;
+        background: var(--surface-alt);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        padding: 6px 10px !important;
+    }
+    .streamlit-expanderHeader:hover {
+        background: var(--border);
+    }
+    .streamlit-expanderContent {
+        border: 1px solid var(--border);
+        border-top: none;
+        border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+        background: white;
+        padding: 10px 12px !important;
+    }
+
+    /* ── Visualization card wrapper ─────────────────────────────────────────── */
+    .viz-card {
+        background: #FEFEFE;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-sm);
+        padding: 16px 18px 12px;
+        margin-bottom: 18px;
+        transition: box-shadow .2s;
+    }
+    .viz-card:hover {
+        box-shadow: var(--shadow-md);
+        border-color: #C8C4BC;
+    }
+    .viz-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .viz-card-title {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--text-main);
+        margin: 0;
+        letter-spacing: -0.01em;
+    }
+
+    /* ── Metric card ───────────────────────────────────────────────────────── */
+    .stMetric > div {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem 1.25rem;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Dataframe ─────────────────────────────────────────────────────────── */
     .stDataFrame {
-        border: 1px solid #e9ecef;
-        border-radius: 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
     }
 
-    /* Chart container */
+    /* ── Plotly chart ───────────────────────────────────────────────────────── */
     .stPlotlyChart {
-        background-color: white;
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border-radius: var(--radius);
+        overflow: hidden;
     }
 
-    /* Hide streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    /* ── Tabs ──────────────────────────────────────────────────────────────── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 3px;
+        background: var(--surface-alt);
+        border-radius: var(--radius-sm);
+        padding: 4px;
+        border: 1px solid var(--border);
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        font-size: 0.83rem;
+        color: var(--text-muted);
+        padding: 5px 12px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: white !important;
+        color: var(--primary-dark) !important;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Alerts / Info boxes ────────────────────────────────────────────────── */
+    .stAlert {
+        border-radius: var(--radius-sm);
+        border: none;
+        font-size: 0.875rem;
+    }
+
+    /* ── Captions & labels ──────────────────────────────────────────────────── */
+    .stCaption, small {
+        color: var(--text-muted) !important;
+        font-size: 0.78rem;
+    }
+
+    /* ── Dividers ───────────────────────────────────────────────────────────── */
+    hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 1rem 0;
+    }
+
+    /* ── Toast / Notification ───────────────────────────────────────────────── */
+    [data-testid="stToast"] {
+        border-radius: var(--radius);
+        font-size: 0.875rem;
+    }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface-alt); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+    /* ── Hide Streamlit chrome ──────────────────────────────────────────────── */
+    #MainMenu { visibility: hidden; }
+    footer    { visibility: hidden; }
+    [data-testid="stToolbar"] { display: none; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -215,63 +398,68 @@ class DashboardBuilderApp:
 
         if get_state("show_export"):
             self._render_export_dialog()
+            set_state("show_export", False)
 
         # Notificações do sistema
         self._handle_notifications()
 
     def _render_header(self) -> None:
-        """Render the application header with actions."""
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        """Topbar com nome da análise editável e ações."""
+        current_analysis = self.analysis_service.get_current_analysis()
 
-        with col1:
-            st.title("📊 Dashboard Builder")
+        col_name, col_save, col_export = st.columns([5, 1, 1])
 
-        with col2:
-            current_analysis = self.analysis_service.get_current_analysis()
+        with col_name:
             if current_analysis:
-                # Rename analysis
                 new_name = st.text_input(
-                    "Analysis Name",
+                    "nome",
                     value=current_analysis.name,
                     label_visibility="collapsed",
                     key="analysis_name_input",
+                    placeholder="Nome da análise…",
                 )
                 if new_name != current_analysis.name:
                     self.analysis_service.rename_analysis(current_analysis.id, new_name)
                     st.rerun()
+            else:
+                st.markdown(
+                    "<span style='font-size:1.1rem;font-weight:700;color:#1E293B;'>"
+                    "📊 Smart BI</span>",
+                    unsafe_allow_html=True,
+                )
 
-        with col3:
+        with col_save:
             if current_analysis:
-                if st.button("💾 Save", use_container_width=True):
+                if st.button("💾 Salvar", width='stretch'):
                     self.analysis_service.save_current_analysis()
-                    set_state("notification", ("Analysis saved!", "success"))
+                    st.toast("Análise salva!", icon="✅")
 
-        with col4:
+        with col_export:
             if current_analysis:
-                if st.button("📤 Export", type="primary", use_container_width=True):
+                if st.button("📤 Exportar", type="primary", width='stretch'):
                     set_state("show_export", True)
+                    st.rerun()
 
-        st.markdown("---")
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #E2E8F0;margin:8px 0 16px;'/>",
+            unsafe_allow_html=True,
+        )
 
     def _render_main_layout(self) -> None:
         """Render the main application layout."""
         current_analysis = self.analysis_service.get_current_analysis()
-
         if not current_analysis:
             return
 
-        # Main content area with columns
+        current_slide = self.analysis_service.get_current_slide()
+
         col_main, col_widgets = st.columns([3, 1])
 
         with col_widgets:
-            # Widget palette for adding visualizations
-            self._render_widget_sidebar()
+            self._render_widget_sidebar(current_analysis)
 
         with col_main:
-            # Render current slide canvas
-            current_slide = self.analysis_service.get_current_slide()
-
-            # Render canvas
+            # ── Canvas ───────────────────────────────────────────────────────
             render_canvas(
                 slide=current_slide,
                 data_service=self.data_service,
@@ -279,9 +467,11 @@ class DashboardBuilderApp:
                 on_update_visualization=self._on_update_visualization,
                 on_delete_visualization=self._on_delete_visualization,
                 on_add_comment=self._on_add_comment,
+                analysis=current_analysis,
+                on_update_measures=self._on_update_measures,
             )
 
-            # Render slide navigator
+            # ── Slide navigator ───────────────────────────────────────────────
             if current_analysis.slides:
                 render_slide_navigator(
                     slides=current_analysis.slides,
@@ -292,16 +482,20 @@ class DashboardBuilderApp:
                 )
 
     def _render_mapping_screen(self) -> None:
-        """Interface de Mapeamento de Colunas (Sprint 1)."""
-        st.header("🛠️ Configuração de Dados")
+        """Tela de Mapeamento de Colunas com design em cards."""
+        st.markdown(
+            "<h2 style='color:#1E293B;font-weight:700;margin-bottom:4px;'>🛠️ Configurar Colunas</h2>"
+            "<p style='color:#64748B;margin-bottom:24px;'>Confirme ou ajuste os tipos detectados automaticamente.</p>",
+            unsafe_allow_html=True,
+        )
         df = get_state("temp_df")
         schema = get_state("temp_schema")
 
         if df is not None:
             mapping = render_column_mapper(df, schema=schema)
 
-            st.markdown("---")
-            if st.button("Finalizar e Validar Dados", type="primary", use_container_width=True):
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            if st.button("✓  Validar e continuar", type="primary", width='stretch'):
                 _tipo_map = {
                     "Numérico": ColumnType.NUMERIC,
                     "Data/Hora": ColumnType.DATETIME,
@@ -329,33 +523,30 @@ class DashboardBuilderApp:
                 st.success("Dados validados! Os gráficos foram liberados.")
                 st.rerun()
 
-    def _render_widget_sidebar(self) -> None:
-        """Render the widget sidebar for adding visualizations."""
-        current_analysis = self.analysis_service.get_current_analysis()
-
-        # Se não houver análise ou dados, mostra o botão de upload
+    def _render_widget_sidebar(self, current_analysis) -> None:
+        """Painel direito com palette vertical de visuais + preview de dados."""
         if not current_analysis or not current_analysis.data_schema:
-            st.info("📁 Carregue dados para adicionar visualizações")
-            if st.button("📂 Carregar Excel/CSV", use_container_width=True, type="primary"):
-                # Ativa a flag que a Sidebar principal e o _render_main_layout monitoram
-                set_state("show_uploader", True)
             return
 
-        # Preview dos dados (Power Query style)
-        with st.expander("📁 Pré-visualização dos Dados", expanded=False):
-            # Obtém os dados já tratados (Task 1 e 2 aplicadas)
-            df = self.data_service.get_cached_data(current_analysis.id)
-            if df is not None:
-                render_data_preview(current_analysis.data_schema, df)
+        st.markdown(
+            "<div style='font-size:.70rem;font-weight:600;letter-spacing:.08em;"
+            "color:#B0ABA4;text-transform:uppercase;margin-bottom:10px;'>Adicionar visual</div>",
+            unsafe_allow_html=True,
+        )
 
-        # Paleta de Widgets (Gráficos disponíveis)
         from presentation.widgets import render_widget_palette
-
         render_widget_palette(
             current_analysis.data_schema, self._start_visualization_config
         )
 
-        # Diálogos de configuração (Modais de criação/edição)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        df = self.data_service.get_cached_data(current_analysis.id)
+        if df is not None:
+            with st.expander("📋 Dados", expanded=False):
+                render_data_preview(current_analysis.data_schema, df)
+
+        # Modais de config (abrem sobre o canvas via @st.dialog)
         if get_state("configuring_new_viz"):
             self._render_config_dialog()
 
@@ -380,12 +571,12 @@ class DashboardBuilderApp:
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button(
-                            "📁 Load File", type="primary", use_container_width=True
+                            "📁 Load File", type="primary", width='stretch'
                         ):
                             self._process_uploaded_file(uploaded_file, name_input)
 
                     with col2:
-                        if st.button("✗ Cancel", use_container_width=True):
+                        if st.button("✗ Cancel", width='stretch'):
                             set_state("show_uploader", False)
                             st.rerun()
 
@@ -401,23 +592,21 @@ class DashboardBuilderApp:
                 st.rerun()
 
     def _render_export_dialog(self) -> None:
-        """Render export dialog."""
+        """Abre o modal @st.dialog de exportação para PDF."""
         current_analysis = self.analysis_service.get_current_analysis()
         if current_analysis:
-            with st.expander("📤 Export Analysis", expanded=True):
-                render_export_dialog(
-                    analysis=current_analysis, on_export=self._on_export
-                )
-                if st.button("Close Export"):
-                    set_state("show_export", False)
-                    st.rerun()
+            render_export_dialog(
+                analysis=current_analysis,
+                on_export=self._on_export,
+            )
 
     def _handle_notifications(self) -> None:
-        """Display and clear notifications."""
+        """Exibe notificações via st.toast e limpa o estado."""
         notification = get_state("notification")
         if notification:
             message, level = notification
-            render_notification(message, level)
+            icon_map = {"success": "✅", "error": "❌", "warning": "⚠️", "info": "ℹ️"}
+            st.toast(message, icon=icon_map.get(level, "ℹ️"))
             set_state("notification", None)
 
     # Callback methods
@@ -457,19 +646,25 @@ class DashboardBuilderApp:
         set_state("configuring_new_viz", viz_type)  
 
     def _render_config_dialog(self) -> None:
-        """Renderiza o diálogo para criar uma NOVA visualização (Sprint 2)."""
+        """Abre o modal @st.dialog para criar uma NOVA visualização."""
         viz_type = get_state("configuring_new_viz")
         current_analysis = self.analysis_service.get_current_analysis()
 
         if not viz_type or not current_analysis or not current_analysis.data_schema:
             return
 
-        st.markdown("---")
+        # MEASURES não precisa de dialog — cria direto
+        if viz_type == VisualizationType.MEASURES:
+            config = VisualizationConfig(
+                visualization_type=VisualizationType.MEASURES,
+                title="Medidas Calculadas",
+            )
+            self._create_visualization_with_config(viz_type, config)
+            return
 
         from presentation.widgets import render_visualization_config_dialog
 
         def on_save(config):
-            # Esta função cria a visualização com a nova config (incluindo y_columns como lista)
             self._create_visualization_with_config(viz_type, config)
             set_state("configuring_new_viz", None)
             st.rerun()
@@ -480,14 +675,14 @@ class DashboardBuilderApp:
 
         render_visualization_config_dialog(
             viz_type=viz_type,
-            data_schema=current_analysis.data_schema,
+            data_schema=self._get_effective_schema(current_analysis),
             on_save=on_save,
             on_cancel=on_cancel,
             is_new=True,
         )
 
     def _render_edit_config_dialog(self) -> None:
-        """Render the configuration dialog for editing an existing visualization."""
+        """Abre o modal @st.dialog para editar uma visualização existente."""
         viz_id = get_state("editing_viz_id")
         slide_id = get_state("editing_slide_id")
 
@@ -498,7 +693,6 @@ class DashboardBuilderApp:
         if not current_analysis or not current_analysis.data_schema:
             return
 
-        # Find the visualization
         viz = None
         for slide in current_analysis.slides:
             for v in slide.visualizations:
@@ -511,8 +705,6 @@ class DashboardBuilderApp:
             set_state("editing_slide_id", None)
             return
 
-        st.markdown("---")
-
         from presentation.widgets import render_visualization_config_dialog
 
         def on_save(new_config):
@@ -522,7 +714,7 @@ class DashboardBuilderApp:
             set_state("editing_viz_id", None)
             set_state("editing_slide_id", None)
             self.analysis_service.save_current_analysis()
-            st.success("✓ Visualization updated!")
+            st.toast("✓ Visualização atualizada!")
             st.rerun()
 
         def on_cancel():
@@ -532,7 +724,7 @@ class DashboardBuilderApp:
 
         render_visualization_config_dialog(
             viz_type=viz.config.visualization_type,
-            data_schema=current_analysis.data_schema,
+            data_schema=self._get_effective_schema(current_analysis),
             existing_config=viz.config,
             on_save=on_save,
             on_cancel=on_cancel,
@@ -594,6 +786,38 @@ class DashboardBuilderApp:
         """Handle adding a comment."""
         self.analysis_service.update_visualization(slide_id, viz_id, comment=comment)
 
+    def _on_update_measures(self, measures: list) -> None:
+        """Atualiza as medidas calculadas da análise corrente e salva."""
+        current_analysis = self.analysis_service.get_current_analysis()
+        if current_analysis:
+            current_analysis.measures = measures
+            self.analysis_service.save_current_analysis()
+
+    def _get_effective_schema(self, analysis):
+        """Retorna o DataSchema da análise enriquecido com as medidas como colunas NUMERIC."""
+        schema = analysis.data_schema
+        if not schema:
+            return schema
+        measures = getattr(analysis, "measures", None) or []
+        if not measures:
+            return schema
+        existing_names = {c.name for c in schema.columns}
+        extra = []
+        for m in measures:
+            name = (m.get("name") or "").strip()
+            if name and name not in existing_names:
+                from domain.entities import Column
+                extra.append(Column(name=name, data_type=ColumnType.NUMERIC))
+        if not extra:
+            return schema
+        from domain.entities import DataSchema
+        return DataSchema(
+            columns=list(schema.columns) + extra,
+            row_count=schema.row_count,
+            file_name=schema.file_name,
+            file_size=schema.file_size,
+        )
+
     def _on_slide_change(self, slide_id: str) -> None:
         """Handle slide change."""
         self.analysis_service.set_current_slide(slide_id)
@@ -611,30 +835,144 @@ class DashboardBuilderApp:
         st.success("Slide deleted")
         st.rerun()
 
+    def _apply_filters_to_df(self, df: pl.DataFrame, viz_id: str) -> pl.DataFrame:
+        """Aplica os filtros salvos em session_state para a visualização ao df."""
+        filters = st.session_state.get(f"filters_{viz_id}", [])
+        result = df
+        for f in filters:
+            col, op, val = f.get("col"), f.get("op"), f.get("val")
+            if not col or col not in result.columns:
+                continue
+            try:
+                c = pl.col(col)
+                dtype = result.schema.get(col)
+                numeric_types = (
+                    pl.Float64, pl.Float32, pl.Int64, pl.Int32,
+                    pl.Int16, pl.Int8, pl.UInt64, pl.UInt32,
+                )
+
+                def _cast(v):
+                    if dtype in (pl.Float64, pl.Float32):
+                        try: return float(v)
+                        except: return v
+                    if dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32):
+                        try: return int(float(v))
+                        except: return v
+                    return v
+
+                if op == "is_null":
+                    result = result.filter(c.is_null())
+                elif op == "is_not_null":
+                    result = result.filter(c.is_not_null())
+                elif op == "in":
+                    vals = [v.strip() for v in str(val).split(",") if v.strip()]
+                    result = result.filter(c.cast(pl.String).is_in(vals))
+                elif op == "contains":
+                    result = result.filter(c.cast(pl.String).str.contains(str(val), literal=True))
+                elif op == "starts_with":
+                    result = result.filter(c.cast(pl.String).str.starts_with(str(val)))
+                elif op == "eq":
+                    if isinstance(val, list):
+                        result = result.filter(c.cast(pl.String).is_in([str(v) for v in val]))
+                    else:
+                        result = result.filter(c == _cast(val))
+                elif op == "ne":
+                    result = result.filter(c != _cast(val))
+                elif op == "gt":
+                    result = result.filter(c > _cast(val))
+                elif op == "lt":
+                    result = result.filter(c < _cast(val))
+                elif op == "gte":
+                    result = result.filter(c >= _cast(val))
+                elif op == "lte":
+                    result = result.filter(c <= _cast(val))
+            except Exception:
+                pass
+        return result
+
     def _on_export(self, analysis: Analysis, options: Dict[str, Any]) -> Optional[str]:
-        """Handle export request."""
+        """Exporta a análise para PDF aplicando filtros e medidas como estão na tela."""
         try:
-            # Generate chart images
-            chart_images = {}
-            df = self.data_service.get_cached_data(analysis.id)
+            df_base = self.data_service.get_cached_data(analysis.id)
+            if df_base is None:
+                st.error("Sem dados carregados para exportar.")
+                return None
 
-            if df is not None:
-                for slide in analysis.slides:
-                    for viz in slide.visualizations:
-                        if (
-                            viz.config
-                            and viz.config.visualization_type != VisualizationType.TABLE
-                        ):
-                            try:
-                                fig = self.chart_factory.create_chart(df, viz.config)
-                                img_bytes = self.chart_factory.export_figure_to_bytes(
-                                    fig, "png"
-                                )
-                                chart_images[viz.id] = img_bytes
-                            except Exception as e:
-                                print(f"Error generating chart image: {e}")
+            # Aplica medidas calculadas
+            measures = getattr(analysis, "measures", None) or []
+            if measures:
+                try:
+                    df_base = self.data_service.compute_measures(df_base, measures)
+                except Exception:
+                    pass
 
-            # Create export options
+            chart_images: Dict[str, bytes] = {}
+            table_data: Dict[str, Dict] = {}
+            metric_data: Dict[str, Dict] = {}
+
+            for slide in analysis.slides:
+                for viz in slide.visualizations:
+                    if not viz.config:
+                        continue
+                    vtype = viz.config.visualization_type
+
+                    # Painel de medidas não vai para o PDF
+                    if vtype == VisualizationType.MEASURES:
+                        continue
+
+                    # Aplica filtros da sessão específicos desta viz
+                    df_viz = self._apply_filters_to_df(df_base, viz.id)
+
+                    if vtype == VisualizationType.TABLE:
+                        config = viz.config
+                        if config.y_columns:
+                            cols = [c for c in config.y_columns if c in df_viz.columns]
+                        elif config.x_column or config.y_column:
+                            cols = [
+                                c for c in [config.x_column, config.y_column, config.color_column]
+                                if c and c in df_viz.columns
+                            ]
+                        else:
+                            cols = list(df_viz.columns[:10])
+                        if cols:
+                            tdf = df_viz.select(cols).head(100)
+                            table_data[viz.id] = {
+                                "columns": cols,
+                                "data": tdf.to_pandas().to_dict(orient="records"),
+                                "title": config.title or "Tabela",
+                            }
+
+                    elif vtype == VisualizationType.METRIC_CARD:
+                        config = viz.config
+                        if config.y_column and config.y_column in df_viz.columns:
+                            col = df_viz[config.y_column]
+                            agg = config.aggregation or "sum"
+                            if agg == "mean":
+                                val = col.mean()
+                            elif agg == "count":
+                                val = col.count()
+                            elif agg == "min":
+                                val = col.min()
+                            elif agg == "max":
+                                val = col.max()
+                            else:
+                                val = col.sum()
+                            metric_data[viz.id] = {
+                                "value": val,
+                                "column": config.y_column,
+                                "agg": agg,
+                                "title": config.title or config.y_column,
+                            }
+
+                    else:
+                        try:
+                            img_bytes = self.chart_factory.render_to_image_bytes(
+                                df_viz, viz.config
+                            )
+                            chart_images[viz.id] = img_bytes
+                        except Exception as e:
+                            print(f"Erro ao gerar imagem para {viz.id}: {e}")
+
             export_options = ExportOptions(
                 format=options.get("format", "pdf"),
                 paper_size=options.get("paper_size", "a4"),
@@ -644,31 +982,17 @@ class DashboardBuilderApp:
                 footer_text=options.get("footer_text", ""),
             )
 
-            # Export based on format
-            if options.get("format") == "latex":
-                output_path = self.export_service.export_to_latex(
-                    analysis, export_options, chart_images
-                )
-            elif options.get("format") == "html":
-                output_path = self.export_service.export_to_html(
-                    analysis, export_options, chart_images
-                )
-            else:
-                # Try PDF via LaTeX first, fallback to ReportLab
-                try:
-                    output_path = self.pdf_generator.generate_pdf(
-                        analysis, export_options, chart_images
-                    )
-                except Exception as e:
-                    print(f"PDF generation error: {e}")
-                    output_path = self.export_service.export_to_html(
-                        analysis, export_options, chart_images
-                    )
-
+            output_path = self.pdf_generator.generate_pdf(
+                analysis,
+                export_options,
+                chart_images,
+                table_data=table_data,
+                metric_data=metric_data,
+            )
             return output_path
 
         except Exception as e:
-            st.error(f"Export failed: {str(e)}")
+            st.error(f"Erro na exportação: {str(e)}")
             return None
 
 

@@ -36,6 +36,7 @@ class VisualizationType(Enum):
     COLUMN_CHART = "column_chart"
     HEATMAP = "heatmap"
     BOX_PLOT = "box_plot"
+    MEASURES = "measures"
 
 
 class ExportFormat(Enum):
@@ -327,6 +328,7 @@ class Analysis:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     file_path: Optional[str] = None
+    measures: List[Dict[str, str]] = field(default_factory=list)
 
     def add_slide(self, slide: Optional[Slide] = None) -> Slide:
         """Add a new slide to the analysis."""
@@ -368,6 +370,7 @@ class Analysis:
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "file_path": self.file_path,
+            "measures": self.measures,
         }
 
     @classmethod
@@ -387,6 +390,7 @@ class Analysis:
             if "updated_at" in data
             else datetime.now(),
             file_path=data.get("file_path"),
+            measures=data.get("measures", []),
         )
 
 

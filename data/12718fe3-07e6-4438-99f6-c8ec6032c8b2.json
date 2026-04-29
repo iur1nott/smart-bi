@@ -1,0 +1,177 @@
+{
+  "id": "12718fe3-07e6-4438-99f6-c8ec6032c8b2",
+  "name": "Planilha Pok\u00e9mon para Projeto de Dados",
+  "data_schema": {
+    "columns": [
+      {
+        "name": "ID",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Nome",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 1",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Tipo 2",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Total",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "HP",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Attack",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Defense",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Atk",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Sp. Def",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Speed",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Gera\u00e7\u00e3o",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Lend\u00e1rio",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Cor",
+        "data_type": "categorical",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      },
+      {
+        "name": "Taxa de Captura",
+        "data_type": "numeric",
+        "sample_values": [],
+        "null_count": 0,
+        "unique_count": 0,
+        "statistics": {}
+      }
+    ],
+    "row_count": 25,
+    "file_name": "",
+    "file_size": 0
+  },
+  "slides": [
+    {
+      "id": "4fe961d9-9083-4d66-88b1-c088d429266a",
+      "title": "Slide 1",
+      "visualizations": [
+        {
+          "id": "b9ba9b48-e3d7-417a-bdbe-fc1fb82a150d",
+          "config": {
+            "visualization_type": "column_chart",
+            "title": "ID por Nome",
+            "x_column": "Nome",
+            "y_column": null,
+            "y_columns": [
+              "ID"
+            ],
+            "color_column": null,
+            "size_column": null,
+            "aggregation": "sum",
+            "show_legend": true,
+            "show_grid": true,
+            "show_values": false,
+            "color_scheme": "default",
+            "custom_options": {}
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 400,
+            "height": 300
+          },
+          "comment": "",
+          "data_snapshot": null
+        }
+      ],
+      "layout": "single",
+      "background_color": "#FFFFFF",
+      "created_at": "2026-04-25T10:58:58.026116",
+      "updated_at": "2026-04-25T10:59:18.180126"
+    }
+  ],
+  "created_at": "2026-04-25T10:58:58.026060",
+  "updated_at": "2026-04-25T10:58:58.026120",
+  "file_path": null,
+  "measures": []
+}
