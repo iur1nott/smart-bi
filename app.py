@@ -10,54 +10,58 @@ Features:
 - Canvas-based visualization editing
 """
 
-import streamlit as st
-import polars as pl
+import logging
 import os
 import sys
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import polars as pl
+import streamlit as st
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+logger = logging.getLogger(__name__)
+
 # Domain imports
 from domain.entities import (
-    User,
     Dashboard,
-    Visualization,
-    VisualizationConfig,
     File,
     FileSheet,
-)
-
-# Infrastructure imports
-from infrastructure.database import init_database, get_database
-from infrastructure.repositories import (
-    UserRepositoryImpl,
-    FileRepositoryImpl,
-    DashboardRepositoryImpl,
+    User,
+    Visualization,
+    VisualizationConfig,
 )
 from infrastructure.auth import JWTHandler
-from infrastructure.storage import get_s3_client
 
-# Use case imports
-from use_cases.auth_service import AuthService
-from use_cases.file_service import FileService
-from use_cases.dashboard_service import DashboardService
-from use_cases.data_service import DataService
-from use_cases.export_service import ExportService
+# Infrastructure imports
+from infrastructure.database import get_database, init_database
+from infrastructure.repositories import (
+    DashboardRepositoryImpl,
+    FileRepositoryImpl,
+    UserRepositoryImpl,
+)
+from infrastructure.storage import get_s3_client
+from presentation.canvas import render_canvas
+from presentation.components import (
+    render_export_dialog,
+    render_header_bar,
+    render_notification,
+    render_settings_modal,
+    render_welcome_screen,
+)
 
 # Presentation imports
 from presentation.login import render_login_page, render_user_menu
-from presentation.sidebar import render_main_sidebar, render_file_uploader
-from presentation.widget_palette import render_widget_palette, render_column_mapping
-from presentation.canvas import render_canvas
-from presentation.components import (
-    render_settings_modal,
-    render_export_dialog,
-    render_welcome_screen,
-    render_notification,
-    render_header_bar,
-)
+from presentation.sidebar import render_file_uploader, render_main_sidebar
+from presentation.widget_palette import render_column_mapping, render_widget_palette
+
+# Use case imports
+from use_cases.auth_service import AuthService
+from use_cases.dashboard_service import DashboardService
+from use_cases.data_service import DataService
+from use_cases.export_service import ExportService
+from use_cases.file_service import FileService
 
 # Configure Streamlit page
 st.set_page_config(
@@ -154,6 +158,8 @@ class SmartXLApp:
             "data_cache": {},
             "sheet_cache": {},
             "current_file": None,
+            "dashboards_cache": None,  # Cache for dashboards list
+            "dashboards_cache_time": None,  # Timestamp for cache freshness
         }
 
         for key, value in defaults.items():
@@ -228,7 +234,23 @@ class SmartXLApp:
 
     def _render_sidebar(self) -> None:
         """Render the main sidebar."""
-        dashboards = self.dashboard_service.get_user_dashboards()
+        # Use cached dashboards or fetch fresh
+        import time
+
+        cache_age = (
+            time.time() - st.session_state.dashboards_cache_time
+            if st.session_state.dashboards_cache_time
+            else float("inf")
+        )
+
+        # Refresh cache if older than 30 seconds or not set
+        if st.session_state.dashboards_cache is None or cache_age > 30:
+            st.session_state.dashboards_cache = (
+                self.dashboard_service.get_user_dashboards()
+            )
+            st.session_state.dashboards_cache_time = time.time()
+
+        dashboards = st.session_state.dashboards_cache
         current_id = (
             st.session_state.current_dashboard.dashboard_id
             if st.session_state.current_dashboard
@@ -352,13 +374,44 @@ class SmartXLApp:
         dashboard = self.dashboard_service.get_dashboard(dashboard_id)
         if dashboard:
             st.session_state.current_dashboard = dashboard
+
+            # Set current_sheet_id from visualizations
             if dashboard.visualizations:
                 st.session_state.current_sheet_id = dashboard.visualizations[0].sheet_id
+
+            # Load file data from S3 if available
+            if dashboard.file:
+                file_entity = dashboard.file
+                sheet_id = st.session_state.current_sheet_id
+
+                # Check if data is already cached
+                if sheet_id and self.data_service.get_cached_sheet(sheet_id) is None:
+                    # Find the sheet entity to get sheet_name
+                    sheet = self.file_service.get_sheet(sheet_id)
+
+                    if sheet and file_entity.storage_path:
+                        # Load data from S3
+                        loaded_sheet, df = self.data_service.load_file_from_s3(
+                            storage_path=file_entity.storage_path,
+                            file_id=file_entity.file_id,
+                            sheet_name=sheet.sheet_name if sheet else None,
+                            existing_sheet=sheet,
+                        )
+
+                        if loaded_sheet and df is not None:
+                            logger.info(f"Loaded data from S3 for sheet {sheet_id}")
+
+                # Set current_file for widget palette to work
+                st.session_state.current_file = file_entity
+
             st.rerun()
 
     def _on_delete_dashboard(self, dashboard_id: str) -> None:
         """Handle deletion of a dashboard."""
         self.dashboard_service.delete_dashboard(dashboard_id)
+        # Invalidate cache
+        st.session_state.dashboards_cache = None
+        st.session_state.dashboards_cache_time = None
         if (
             st.session_state.current_dashboard
             and st.session_state.current_dashboard.dashboard_id == dashboard_id
@@ -516,22 +569,30 @@ class SmartXLApp:
                 st.error("Falha ao criar dashboard")
                 return
 
-            # Load data into cache
+            # Get the first sheet from the saved file entity (with proper UUID sheet_id)
+            if not file_entity.sheets:
+                st.error("Falha ao extrair planilhas do arquivo")
+                return
+
+            first_sheet = file_entity.sheets[0]
+
+            # Load data into cache using the proper sheet_id from FileService
             sheet, df = self.data_service.load_excel_from_bytes(
                 file_bytes=uploaded_file.getvalue(),
                 file_name=uploaded_file.name,
                 file_id=file_entity.file_id,
+                existing_sheet=first_sheet,  # Use the sheet with UUID sheet_id
             )
 
-            if sheet and df:
-                # Store sheet reference
-                st.session_state.current_sheet_id = sheet.sheet_id
+            if sheet is not None and df is not None:
+                # Store sheet reference (now using the proper UUID sheet_id)
+                st.session_state.current_sheet_id = first_sheet.sheet_id
                 st.session_state.current_file = file_entity
 
                 # Create a visualization with the first sheet
                 self.dashboard_service.add_visualization(
                     dashboard_id=dashboard.dashboard_id,
-                    sheet_id=sheet.sheet_id,
+                    sheet_id=first_sheet.sheet_id,  # Use the UUID sheet_id
                     viz_type="table",
                     config=VisualizationConfig(title="Data Preview"),
                 )
@@ -540,9 +601,11 @@ class SmartXLApp:
             dashboard = self.dashboard_service.get_dashboard(dashboard.dashboard_id)
             st.session_state.current_dashboard = dashboard
             st.session_state.show_uploader = False
-            st.success(
-                f"✓ Carregado {len(df) if df is not None else 0} linhas de {uploaded_file.name}"
-            )
+            # Invalidate dashboards cache since a new dashboard was created
+            st.session_state.dashboards_cache = None
+            st.session_state.dashboards_cache_time = None
+            row_count = len(df) if df is not None else 0
+            st.success(f"✓ Carregado {row_count} linhas de {uploaded_file.name}")
             st.rerun()
 
         except Exception as e:

@@ -3,10 +3,10 @@ File Repository Implementation - PostgreSQL-based file metadata persistence.
 Handles files, sheets, and columns metadata.
 """
 
-from typing import List, Optional
-from datetime import datetime
 import logging
 import uuid
+from datetime import datetime
+from typing import List, Optional
 
 from domain.entities import File, FileSheet, SheetColumn
 from infrastructure.database import Database, get_database
@@ -248,6 +248,36 @@ class FileRepositoryImpl:
         except Exception as e:
             logger.error(f"Error finding sheets for file {file_id}: {e}")
             return []
+
+    def find_sheet_by_file_and_name(
+        self, file_id: str, sheet_name: str
+    ) -> Optional[FileSheet]:
+        """
+        Find a sheet by file ID and sheet name.
+
+        Args:
+            file_id: The file ID
+            sheet_name: The sheet name
+
+        Returns:
+            FileSheet entity if found, None otherwise
+        """
+        try:
+            with self._db.session_scope() as session:
+                model = (
+                    session.query(FileSheetModel)
+                    .filter(FileSheetModel.file_id == file_id)
+                    .filter(FileSheetModel.sheet_name == sheet_name)
+                    .first()
+                )
+
+                if model:
+                    return self._sheet_model_to_entity(session, model)
+                return None
+
+        except Exception as e:
+            logger.error(f"Error finding sheet {sheet_name} for file {file_id}: {e}")
+            return None
 
     # Column operations
     def find_columns_by_sheet(self, sheet_id: str) -> List[SheetColumn]:

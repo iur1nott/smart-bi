@@ -1,21 +1,23 @@
 """
-Sidebar Component - Main navigation sidebar with dual-sidebar support.
+Sidebar Component - Main navigation sidebar with dashboard management.
+Updated for new schema with dashboards instead of analyses.
 """
 
-from typing import Callable, List, Optional, Any
-import streamlit as st
 from datetime import datetime
+from typing import Any, Callable, List, Optional
 
-from domain.entities import Analysis
+import streamlit as st
+
+from domain.entities import Dashboard
 
 
 def render_main_sidebar(
     user_id: str,
-    analyses: List[Analysis],
-    current_analysis_id: Optional[str],
-    on_new_analysis: Callable[[], None],
-    on_select_analysis: Callable[[str], None],
-    on_delete_analysis: Callable[[str], None],
+    dashboards: List[Dashboard],
+    current_dashboard_id: Optional[str],
+    on_new_dashboard: Callable[[], None],
+    on_select_dashboard: Callable[[str], None],
+    on_delete_dashboard: Callable[[str], None],
     on_settings_click: Callable[[], None],
     on_logout: Callable[[], None],
 ) -> Optional[str]:
@@ -24,16 +26,16 @@ def render_main_sidebar(
 
     Args:
         user_id: Current user ID
-        analyses: List of user's analyses
-        current_analysis_id: ID of currently selected analysis
-        on_new_analysis: Callback for new analysis button
-        on_select_analysis: Callback when selecting an analysis
-        on_delete_analysis: Callback when deleting an analysis
+        dashboards: List of user's dashboards
+        current_dashboard_id: ID of currently selected dashboard
+        on_new_dashboard: Callback for new dashboard button
+        on_select_dashboard: Callback when selecting a dashboard
+        on_delete_dashboard: Callback when deleting a dashboard
         on_settings_click: Callback for settings button
         on_logout: Callback for logout button
 
     Returns:
-        Selected analysis ID if any
+        Selected dashboard ID if any
     """
     selected_id = None
 
@@ -53,7 +55,7 @@ def render_main_sidebar(
                     letter-spacing: 0.5px;
                     margin: 16px 0 8px 0;
                 }
-                .analysis-item {
+                .dashboard-item {
                     background: white;
                     border-radius: 8px;
                     padding: 12px;
@@ -65,27 +67,27 @@ def render_main_sidebar(
             unsafe_allow_html=True,
         )
 
-        # Header and New Analysis button
+        # Header and New Dashboard button
         st.markdown(
             """
             <div style='text-align: center; padding: 12px 0; margin-bottom: 12px;'>
-                <h2 style='margin: 0; color: #10B981; font-weight: 700; font-size: 22px;'>📊 Análise</h2>
+                <h2 style='margin: 0; color: #10B981; font-weight: 700; font-size: 22px;'>📊 SmartXL</h2>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         if st.button(
-            "➕ Nova Análise",
+            "➕ Novo Dashboard",
             type="primary",
-            key="sb_new_analysis",
+            key="sb_new_dashboard",
             use_container_width=True,
         ):
-            on_new_analysis()
+            on_new_dashboard()
 
         # History section
         st.markdown(
-            "<div class='sidebar-section-title'>Histórico</div>",
+            "<div class='sidebar-section-title'>Dashboards</div>",
             unsafe_allow_html=True,
         )
 
@@ -93,12 +95,14 @@ def render_main_sidebar(
         history_container = st.container()
 
         with history_container:
-            if analyses:
-                # Sort by updated_at descending
-                sorted_analyses = sorted(analyses, key=lambda a: a.updated_at, reverse=True)
+            if dashboards:
+                # Sort by created_at descending
+                sorted_dashboards = sorted(
+                    dashboards, key=lambda d: d.created_at, reverse=True
+                )
 
-                for analysis in sorted_analyses[:10]:
-                    is_active = analysis.id == current_analysis_id
+                for dashboard in sorted_dashboards[:10]:
+                    is_active = dashboard.dashboard_id == current_dashboard_id
 
                     col1, col2 = st.columns([5, 1])
 
@@ -106,10 +110,10 @@ def render_main_sidebar(
                         if is_active:
                             st.markdown(
                                 f"""
-                                <div class='analysis-item' style='border-color: #10B981; background: #F0FDF4;'>
-                                    <div style='font-weight: 600; color: #1E293B;'>▶ {analysis.name}</div>
+                                <div class='dashboard-item' style='border-color: #10B981; background: #F0FDF4;'>
+                                    <div style='font-weight: 600; color: #1E293B;'>▶ {dashboard.title}</div>
                                     <div style='font-size: 11px; color: #64748B;'>
-                                        {len(analysis.slides)} slides • {analysis.updated_at.strftime("%d/%m/%Y")}
+                                        {len(dashboard.visualizations)} visualizações • {dashboard.created_at.strftime("%d/%m/%Y")}
                                     </div>
                                 </div>
                                 """,
@@ -117,16 +121,20 @@ def render_main_sidebar(
                             )
                         else:
                             if st.button(
-                                f"📂 {analysis.name}",
-                                key=f"history_{analysis.id}",
+                                f"📂 {dashboard.title}",
+                                key=f"history_{dashboard.dashboard_id}",
                                 use_container_width=True,
                             ):
-                                selected_id = analysis.id
-                                on_select_analysis(analysis.id)
+                                selected_id = dashboard.dashboard_id
+                                on_select_dashboard(dashboard.dashboard_id)
 
                     with col2:
-                        if st.button("🗑️", key=f"del_{analysis.id}", help="Excluir análise"):
-                            on_delete_analysis(analysis.id)
+                        if st.button(
+                            "🗑️",
+                            key=f"del_{dashboard.dashboard_id}",
+                            help="Excluir dashboard",
+                        ):
+                            on_delete_dashboard(dashboard.dashboard_id)
                             st.rerun()
             else:
                 st.markdown(
@@ -139,8 +147,8 @@ def render_main_sidebar(
                         border: 1px dashed #CBD5E1;
                     '>
                         <p style='color: #64748B; margin: 0; font-size: 13px;'>
-                            Nenhuma análise ainda<br>
-                            <span style='font-size: 11px;'>Clique em "Nova Análise" para começar</span>
+                            Nenhum dashboard ainda<br>
+                            <span style='font-size: 11px;'>Clique em "Novo Dashboard" para começar</span>
                         </p>
                     </div>
                     """,
@@ -172,7 +180,7 @@ def render_file_uploader(
     uploaded_file = st.file_uploader(
         "Selecione um arquivo Excel",
         type=["xlsx", "xls"],
-        help="Faça upload de um arquivo Excel para iniciar uma nova análise",
+        help="Faça upload de um arquivo Excel para iniciar um novo dashboard",
     )
 
     if uploaded_file is not None:

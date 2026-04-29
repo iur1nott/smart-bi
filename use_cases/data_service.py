@@ -4,15 +4,16 @@ Follows Single Responsibility Principle - only handles data operations.
 Updated to work with new file-based schema.
 """
 
-from typing import Dict, List, Any, Optional, Tuple
-import polars as pl
-from pathlib import Path
-import tempfile
-import os
 import logging
+import os
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import polars as pl
 import streamlit as st
 
-from config import settings, Constants
+from config import Constants, settings
 from domain.entities import (
     Dashboard,
     File,
@@ -22,7 +23,7 @@ from domain.entities import (
     VisualizationConfig,
     VisualizationType,
 )
-from domain.value_objects import FilterCondition, AggregationConfig
+from domain.value_objects import AggregationConfig, FilterCondition
 from infrastructure.storage.s3_client import get_s3_client
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ class DataService:
         file_name: str,
         file_id: str,
         sheet_name: Optional[str] = None,
+        existing_sheet: Optional[FileSheet] = None,
     ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
         """
         Load an Excel file from bytes.
@@ -120,6 +122,7 @@ class DataService:
             file_name: Original file name
             file_id: ID for caching
             sheet_name: Optional sheet name (uses first sheet if not specified)
+            existing_sheet: Optional existing FileSheet entity to use its sheet_id
 
         Returns:
             Tuple of (FileSheet, DataFrame), or (None, None) on failure
@@ -143,32 +146,37 @@ class DataService:
             df = pl.read_excel(tmp_path, sheet_name=target_sheet)
             df = self._clean_duplicate_columns(df)
 
-            # Create FileSheet entity
-            sheet_id = f"{file_id}_{target_sheet}"
-            sheet = FileSheet(
-                sheet_id=sheet_id,
-                file_id=file_id,
-                sheet_name=target_sheet,
-            )
-
-            # Extract columns
-            columns = []
-            for col_name in df.columns:
-                col_series = df[col_name]
-                polars_type = str(col_series.dtype)
-                db_type = Constants.POLARS_TO_DB_TYPE.get(polars_type, "String")
-
-                column = SheetColumn(
-                    column_id=f"{sheet_id}_{col_name}",
+            # Use existing sheet or create new one
+            if existing_sheet:
+                sheet = existing_sheet
+                sheet_id = sheet.sheet_id
+            else:
+                # Create FileSheet entity with composite ID (for backward compatibility)
+                sheet_id = f"{file_id}_{target_sheet}"
+                sheet = FileSheet(
                     sheet_id=sheet_id,
-                    column_name=col_name,
-                    data_type=db_type,
+                    file_id=file_id,
+                    sheet_name=target_sheet,
                 )
-                columns.append(column)
 
-            sheet.columns = columns
+                # Extract columns
+                columns = []
+                for col_name in df.columns:
+                    col_series = df[col_name]
+                    polars_type = str(col_series.dtype)
+                    db_type = Constants.POLARS_TO_DB_TYPE.get(polars_type, "String")
 
-            # Cache the DataFrame
+                    column = SheetColumn(
+                        column_id=f"{sheet_id}_{col_name}",
+                        sheet_id=sheet_id,
+                        column_name=col_name,
+                        data_type=db_type,
+                    )
+                    columns.append(column)
+
+                sheet.columns = columns
+
+            # Cache the DataFrame with the proper sheet_id
             st.session_state.sheet_cache[sheet_id] = df
             st.session_state.data_cache[file_id] = df
 
@@ -181,7 +189,11 @@ class DataService:
             os.unlink(tmp_path)
 
     def load_file_from_s3(
-        self, storage_path: str, file_id: str, sheet_name: Optional[str] = None
+        self,
+        storage_path: str,
+        file_id: str,
+        sheet_name: Optional[str] = None,
+        existing_sheet: Optional[FileSheet] = None,
     ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
         """
         Load an Excel file from S3.
@@ -190,6 +202,7 @@ class DataService:
             storage_path: S3 path to the file
             file_id: ID for caching
             sheet_name: Optional sheet name (uses first sheet if not specified)
+            existing_sheet: Optional existing FileSheet entity to use its sheet_id
 
         Returns:
             Tuple of (FileSheet, DataFrame), or (None, None) on failure
@@ -202,7 +215,7 @@ class DataService:
                 return None, None
 
             return self.load_excel_from_bytes(
-                file_bytes, "file.xlsx", file_id, sheet_name
+                file_bytes, "file.xlsx", file_id, sheet_name, existing_sheet
             )
 
         except Exception as e:

@@ -11,9 +11,9 @@ address = "0.0.0.0"
 headless = true
 runOnSave = true
 fileWatcherType = "poll"
-enableCORS = false
-enableXsrfProtection = true
 maxUploadSize = 50
+enableCORS = true
+enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false

@@ -3,11 +3,12 @@ Login Page - Authentication UI for user login and registration.
 Updated for new schema.
 """
 
-from typing import Callable, Optional, Any
+from typing import Any, Callable, Optional
+
 import streamlit as st
 
 from domain.entities import User
-from use_cases.auth_service import AuthService, AuthResult
+from use_cases.auth_service import AuthResult, AuthService
 
 
 def render_login_page(

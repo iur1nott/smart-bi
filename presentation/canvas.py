@@ -3,15 +3,16 @@ Canvas Component - Main dashboard editing area with visualization rendering.
 Updated for new schema with dashboards and visualizations.
 """
 
-from typing import Optional, List, Callable, Any, Dict
-import streamlit as st
+from typing import Any, Callable, Dict, List, Optional
+
 import polars as pl
+import streamlit as st
 
 from domain.entities import (
-    Visualization,
-    VisualizationType,
-    VisualizationConfig,
     FileSheet,
+    Visualization,
+    VisualizationConfig,
+    VisualizationType,
 )
 
 
