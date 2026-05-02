@@ -156,6 +156,14 @@ class DashboardService:
         """
         return self._dashboard_repo.delete_dashboard(dashboard_id)
 
+    def is_file_used_by_any_dashboard(self, file_id: str) -> bool:
+        """
+        Whether any dashboard's visualization still references a sheet of
+        ``file_id``. Used by the upload/delete flows to decide if a file
+        is now orphaned and its S3 object + DB rows can be dropped.
+        """
+        return self._dashboard_repo.is_file_used_by_any_dashboard(file_id)
+
     def save_dashboard(self, dashboard: Dashboard) -> bool:
         """
         Save a dashboard (for updates).

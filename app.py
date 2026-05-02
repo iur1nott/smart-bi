@@ -613,9 +613,32 @@ class SmartXLApp:
             st.rerun()
 
     def _on_delete_dashboard(self, dashboard_id: str) -> None:
-        """Handle deletion of a dashboard."""
-        self.dashboard_service.delete_dashboard(dashboard_id)
-        # Invalidate cache
+        """
+        Delete a dashboard. Visualizations cascade-delete via SQLAlchemy,
+        but the file (and its sheets, columns, S3 object) are owned
+        independently — so we explicitly drop any file that no other
+        dashboard still references.
+        """
+        # Resolve files referenced by this dashboard's visualizations BEFORE
+        # the dashboard is deleted, otherwise the join is gone.
+        dashboard = self.dashboard_service.get_dashboard(dashboard_id)
+        candidate_file_ids: set = set()
+        if dashboard:
+            for viz in dashboard.visualizations:
+                sheet = self.file_service.get_sheet(viz.sheet_id)
+                if sheet and sheet.file_id:
+                    candidate_file_ids.add(sheet.file_id)
+
+        if not self.dashboard_service.delete_dashboard(dashboard_id):
+            st.session_state.notification = ("Falha ao excluir dashboard", "error")
+            st.rerun()
+            return
+
+        # Drop S3 + DB rows for files no other dashboard uses any more.
+        for file_id in candidate_file_ids:
+            if not self.dashboard_service.is_file_used_by_any_dashboard(file_id):
+                self.file_service.delete_file(file_id)
+
         st.session_state.dashboards_cache = None
         st.session_state.dashboards_cache_time = None
         if (
@@ -624,6 +647,7 @@ class SmartXLApp:
         ):
             st.session_state.current_dashboard = None
             st.session_state.current_sheet_id = None
+            st.session_state.current_file = None
         st.rerun()
 
     def _on_logout(self) -> None:

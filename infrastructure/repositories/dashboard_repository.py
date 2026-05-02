@@ -10,7 +10,11 @@ import uuid
 
 from domain.entities import Dashboard, Visualization, VisualizationConfig
 from infrastructure.database import Database, get_database
-from infrastructure.models import DashboardModel, VisualizationModel
+from infrastructure.models import (
+    DashboardModel,
+    FileSheetModel,
+    VisualizationModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +275,30 @@ class DashboardRepositoryImpl:
                 f"Error finding visualizations for dashboard {dashboard_id}: {e}"
             )
             return []
+
+    def is_file_used_by_any_dashboard(self, file_id: str) -> bool:
+        """
+        Check whether any visualization in any dashboard references a sheet
+        belonging to ``file_id``. Used to decide whether a file is orphaned
+        and can be safely deleted.
+        """
+        try:
+            with self._db.session_scope() as session:
+                exists = (
+                    session.query(VisualizationModel.viz_id)
+                    .join(
+                        FileSheetModel,
+                        FileSheetModel.sheet_id == VisualizationModel.sheet_id,
+                    )
+                    .filter(FileSheetModel.file_id == file_id)
+                    .first()
+                    is not None
+                )
+                return exists
+        except Exception as e:
+            logger.error(f"Error checking file usage {file_id}: {e}")
+            # Fail safe: assume in use so we don't accidentally delete data.
+            return True
 
     def delete_visualization(self, viz_id: str) -> bool:
         """
