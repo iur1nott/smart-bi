@@ -175,39 +175,7 @@ def render_visualization(
             elif viz.viz_type == "metric_card":
                 render_metric_card(viz, df)
             else:
-                # Convert viz_type string to VisualizationType enum for chart factory
-                from domain.entities import VisualizationType
-
-                config_with_type = VisualizationConfig(
-                    title=viz.config.title,
-                    x_column=viz.config.x_column,
-                    y_column=viz.config.y_column,
-                    color_column=viz.config.color_column,
-                    size_column=viz.config.size_column,
-                    aggregation=viz.config.aggregation,
-                    show_legend=viz.config.show_legend,
-                    show_grid=viz.config.show_grid,
-                    color_scheme=viz.config.color_scheme,
-                    custom_options=viz.config.custom_options,
-                )
-                # Map viz_type to VisualizationType
-                type_map = {
-                    "bar": VisualizationType.BAR,
-                    "line": VisualizationType.LINE,
-                    "pie": VisualizationType.PIE,
-                    "area": VisualizationType.AREA,
-                    "scatter": VisualizationType.SCATTER,
-                    "histogram": VisualizationType.HISTOGRAM,
-                    "box": VisualizationType.BOX,
-                    "heatmap": VisualizationType.HEATMAP,
-                }
-                # Create a modified config with the correct type
-                from domain.entities import VisualizationConfig as VC
-                from domain.entities import VisualizationType as VT
-
-                # For now, render charts directly without using chart_factory
-                # to avoid enum compatibility issues
-                render_chart(viz, df)
+                render_chart(viz, df, chart_factory)
         except Exception as e:
             st.error(f"Erro ao renderizar: {str(e)}")
 
@@ -218,153 +186,29 @@ def render_visualization(
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_chart(viz: Visualization, df: pl.DataFrame) -> None:
-    """Render a chart visualization using Plotly."""
-    import plotly.express as px
-    import plotly.graph_objects as go
+_VIZ_TYPE_MAP = {
+    "bar": VisualizationType.BAR,
+    "line": VisualizationType.LINE,
+    "pie": VisualizationType.PIE,
+    "area": VisualizationType.AREA,
+    "scatter": VisualizationType.SCATTER,
+    "histogram": VisualizationType.HISTOGRAM,
+    "box": VisualizationType.BOX,
+    "heatmap": VisualizationType.HEATMAP,
+}
 
+
+def render_chart(viz: Visualization, df: pl.DataFrame, chart_factory: Any) -> None:
+    """Render a chart visualization through the ChartFactory."""
     config = viz.config
     if not config:
         return
 
+    viz_type = _VIZ_TYPE_MAP.get(viz.viz_type, VisualizationType.BAR)
+
     try:
-        # Prepare data
-        chart_df = df
-
-        # Apply aggregation if needed
-        if config.x_column and config.y_column and config.aggregation:
-            agg_col = pl.col(config.y_column)
-
-            if config.aggregation == "sum":
-                agg_expr = agg_col.sum()
-            elif config.aggregation == "mean":
-                agg_expr = agg_col.mean()
-            elif config.aggregation == "count":
-                agg_expr = agg_col.count()
-            elif config.aggregation == "min":
-                agg_expr = agg_col.min()
-            elif config.aggregation == "max":
-                agg_expr = agg_col.max()
-            elif config.aggregation == "median":
-                agg_expr = agg_col.median()
-            else:
-                agg_expr = agg_col.sum()
-
-            group_cols = [config.x_column]
-            if config.color_column and config.color_column != config.x_column:
-                group_cols.append(config.color_column)
-
-            chart_df = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
-
-        # Convert to pandas for Plotly
-        pdf = chart_df.to_pandas()
-
-        # Create chart based on type
-        if viz.viz_type == "bar":
-            if config.color_column:
-                fig = px.bar(
-                    pdf,
-                    x=config.x_column,
-                    y=config.y_column,
-                    color=config.color_column,
-                    title=config.title,
-                )
-            else:
-                fig = px.bar(
-                    pdf, x=config.x_column, y=config.y_column, title=config.title
-                )
-
-        elif viz.viz_type == "line":
-            if config.color_column:
-                fig = px.line(
-                    pdf,
-                    x=config.x_column,
-                    y=config.y_column,
-                    color=config.color_column,
-                    title=config.title,
-                )
-            else:
-                fig = px.line(
-                    pdf, x=config.x_column, y=config.y_column, title=config.title
-                )
-
-        elif viz.viz_type == "pie":
-            fig = px.pie(
-                pdf, names=config.x_column, values=config.y_column, title=config.title
-            )
-
-        elif viz.viz_type == "area":
-            if config.color_column:
-                fig = px.area(
-                    pdf,
-                    x=config.x_column,
-                    y=config.y_column,
-                    color=config.color_column,
-                    title=config.title,
-                )
-            else:
-                fig = px.area(
-                    pdf, x=config.x_column, y=config.y_column, title=config.title
-                )
-
-        elif viz.viz_type == "scatter":
-            if config.color_column:
-                fig = px.scatter(
-                    pdf,
-                    x=config.x_column,
-                    y=config.y_column,
-                    color=config.color_column,
-                    title=config.title,
-                )
-            else:
-                fig = px.scatter(
-                    pdf, x=config.x_column, y=config.y_column, title=config.title
-                )
-
-        elif viz.viz_type == "histogram":
-            fig = px.histogram(pdf, x=config.x_column, title=config.title)
-
-        elif viz.viz_type == "box":
-            if config.color_column:
-                fig = px.box(
-                    pdf,
-                    x=config.x_column,
-                    y=config.y_column,
-                    color=config.color_column,
-                    title=config.title,
-                )
-            else:
-                fig = px.box(pdf, y=config.y_column, title=config.title)
-
-        elif viz.viz_type == "heatmap":
-            # Create pivot table for heatmap
-            pivot = pdf.pivot(
-                index=config.x_column,
-                columns=config.color_column,
-                values=config.y_column,
-            )
-            fig = px.imshow(pivot, title=config.title)
-
-        else:
-            # Default to bar chart
-            fig = px.bar(pdf, x=config.x_column, y=config.y_column, title=config.title)
-
-        # Update layout
-        fig.update_layout(
-            showlegend=config.show_legend,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-        )
-
-        if config.show_grid:
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-        else:
-            fig.update_xaxes(showgrid=False)
-            fig.update_yaxes(showgrid=False)
-
+        fig = chart_factory.create_chart(df, config, viz_type)
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{viz.viz_id}")
-
     except Exception as e:
         st.error(f"Erro ao criar gráfico: {str(e)}")
 

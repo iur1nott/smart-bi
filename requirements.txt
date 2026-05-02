@@ -1,9 +1,18 @@
-# Core dependencies
-streamlit>=1.28.0
+# Frontend / Streamlit
+streamlit>=1.55.0
+Pillow>=10.0.0
+
+# Data processing
 polars>=0.20.0
+pandas>=2.1.0
+numpy>=1.26.0
+python-dateutil>=2.8.2
+pydantic>=2.5.0
+
+# Excel I/O
 openpyxl>=3.1.2
 xlsx2csv>=0.8.2
-fastexcel>=0.10.0
+fastexcel>=0.19.0
 
 # Visualization
 plotly>=5.18.0
@@ -11,21 +20,22 @@ matplotlib>=3.8.0
 seaborn>=0.13.0
 kaleido>=0.2.1
 
-# Database
+# Database (Supabase / Postgres)
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9
 alembic>=1.13.0
-boto3==1.42.89
 
 # Authentication
 pyjwt>=2.8.0
 bcrypt>=4.1.0
 
-# Export
-reportlab>=4.0.0
+# Storage (S3-compatible)
+boto3>=1.42.96
 
-# Templates
+# Export (PDF / templates)
+reportlab>=4.0.0
 jinja2>=3.1.2
+pypdf2>=3.0.1
 
 # Utilities
 python-dotenv>=1.0.0

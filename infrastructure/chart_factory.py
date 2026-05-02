@@ -24,29 +24,35 @@ class ChartFactory:
         """Initialize the chart factory with color palette."""
         self.colors = ChartColors()
 
-    def create_chart(self, df: pl.DataFrame, config: VisualizationConfig) -> go.Figure:
+    def create_chart(
+        self,
+        df: pl.DataFrame,
+        config: VisualizationConfig,
+        viz_type: VisualizationType,
+    ) -> go.Figure:
         """
         Create a chart based on visualization configuration.
 
         Args:
             df: Polars DataFrame with the data
             config: Visualization configuration
+            viz_type: Type of visualization to render
 
         Returns:
             Plotly Figure object
         """
         chart_creators = {
-            VisualizationType.BAR_CHART: self._create_bar_chart,
-            VisualizationType.LINE_CHART: self._create_line_chart,
-            VisualizationType.PIE_CHART: self._create_pie_chart,
-            VisualizationType.AREA_CHART: self._create_area_chart,
-            VisualizationType.SCATTER_PLOT: self._create_scatter_plot,
+            VisualizationType.BAR: self._create_bar_chart,
+            VisualizationType.LINE: self._create_line_chart,
+            VisualizationType.PIE: self._create_pie_chart,
+            VisualizationType.AREA: self._create_area_chart,
+            VisualizationType.SCATTER: self._create_scatter_plot,
             VisualizationType.HISTOGRAM: self._create_histogram,
-            VisualizationType.BOX_PLOT: self._create_box_plot,
+            VisualizationType.BOX: self._create_box_plot,
             VisualizationType.HEATMAP: self._create_heatmap,
         }
 
-        creator = chart_creators.get(config.visualization_type, self._create_bar_chart)
+        creator = chart_creators.get(viz_type, self._create_bar_chart)
 
         fig = creator(df, config)
 

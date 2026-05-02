@@ -76,59 +76,240 @@ st.set_page_config(
     },
 )
 
-# Apply custom CSS
+# Apply custom CSS (pastel design tokens ported from dev-03)
 st.markdown(
     """
-    <style>
-        /* Main container */
-        .main .block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-        }
+<style>
+    /* ── Design tokens — pastel palette ────────────────────────────────────── */
+    :root {
+        --primary:      #7BAFC8;
+        --primary-dark: #5B8FA8;
+        --surface:      #FAF9F6;
+        --surface-alt:  #F0EDE8;
+        --border:       #DDD8D0;
+        --text-main:    #2C2B28;
+        --text-muted:   #7A7870;
+        --success:      #80B498;
+        --danger:       #C4806A;
+        --warning:      #C4A460;
+        --radius:       10px;
+        --radius-sm:    6px;
+        --shadow-sm:    0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03);
+        --shadow-md:    0 4px 12px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.03);
+    }
 
-        /* Sidebar styling */
-        section[data-testid="stSidebar"] {
-            background-color: #F8FAFC;
-        }
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+        background-color: var(--surface);
+    }
+    [data-testid="stAppViewContainer"] {
+        background-color: var(--surface);
+    }
 
-        /* Buttons */
-        .stButton > button[kind="primary"] {
-            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-        }
+    /* ── Sidebar ───────────────────────────────────────────────────────────── */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #2E2C2A 0%, #1C1B18 100%);
+    }
+    section[data-testid="stSidebar"] * {
+        color: #C8C4BC !important;
+    }
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #EDE9E3 !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.10);
+        color: #C8C4BC !important;
+        border-radius: var(--radius-sm);
+        transition: background .15s;
+    }
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255,255,255,.11);
+    }
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        background: rgba(255,255,255,.04);
+        border: 1px dashed rgba(255,255,255,.18);
+        border-radius: var(--radius-sm);
+    }
 
-        .stButton > button[kind="primary"]:hover {
-            background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        }
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+    .stButton > button {
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        transition: all .15s ease;
+        border: 1px solid var(--border);
+        background: white;
+        color: var(--text-main) !important;
+        font-size: 0.83rem;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+        background: var(--surface-alt);
+    }
+    .stButton > button[kind="primary"] {
+        background: var(--primary);
+        border-color: var(--primary-dark);
+        color: white !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: var(--primary-dark);
+        box-shadow: 0 4px 12px rgba(91,143,168,.30);
+    }
 
-        /* Cards */
-        .stMetric > div {
-            background-color: #F8FAFC;
-            padding: 1rem;
-            border-radius: 12px;
-            border: 1px solid #E2E8F0;
-        }
+    /* ── Inputs & Selects ──────────────────────────────────────────────────── */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div,
+    .stNumberInput > div > div > input {
+        border-radius: var(--radius-sm) !important;
+        border-color: var(--border) !important;
+        background-color: white !important;
+        color: var(--text-main) !important;
+        font-size: 0.875rem;
+    }
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div:focus-within {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px rgba(123,175,200,.18) !important;
+    }
 
-        /* DataFrames */
-        .stDataFrame {
-            border: 1px solid #E2E8F0;
-            border-radius: 12px;
-            overflow: hidden;
-        }
+    /* ── Expanders ─────────────────────────────────────────────────────────── */
+    .streamlit-expanderHeader {
+        font-weight: 600;
+        font-size: 0.82rem;
+        color: var(--text-muted) !important;
+        background: var(--surface-alt);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        padding: 6px 10px !important;
+    }
+    .streamlit-expanderHeader:hover {
+        background: var(--border);
+    }
+    .streamlit-expanderContent {
+        border: 1px solid var(--border);
+        border-top: none;
+        border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+        background: white;
+        padding: 10px 12px !important;
+    }
 
-        /* Charts */
-        .stPlotlyChart {
-            border-radius: 12px;
-            overflow: hidden;
-        }
+    /* ── Visualization card wrapper ─────────────────────────────────────────── */
+    .viz-card {
+        background: #FEFEFE;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-sm);
+        padding: 16px 18px 12px;
+        margin-bottom: 18px;
+        transition: box-shadow .2s;
+    }
+    .viz-card:hover {
+        box-shadow: var(--shadow-md);
+        border-color: #C8C4BC;
+    }
+    .viz-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .viz-card-title {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--text-main);
+        margin: 0;
+        letter-spacing: -0.01em;
+    }
 
-        /* Hide streamlit branding */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
-    </style>
+    /* ── Metric card ───────────────────────────────────────────────────────── */
+    .stMetric > div {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem 1.25rem;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Dataframe ─────────────────────────────────────────────────────────── */
+    .stDataFrame {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Plotly chart ───────────────────────────────────────────────────────── */
+    .stPlotlyChart {
+        border-radius: var(--radius);
+        overflow: hidden;
+    }
+
+    /* ── Tabs ──────────────────────────────────────────────────────────────── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 3px;
+        background: var(--surface-alt);
+        border-radius: var(--radius-sm);
+        padding: 4px;
+        border: 1px solid var(--border);
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        font-size: 0.83rem;
+        color: var(--text-muted);
+        padding: 5px 12px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: white !important;
+        color: var(--primary-dark) !important;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Alerts / Info boxes ────────────────────────────────────────────────── */
+    .stAlert {
+        border-radius: var(--radius-sm);
+        border: none;
+        font-size: 0.875rem;
+    }
+
+    /* ── Captions & labels ──────────────────────────────────────────────────── */
+    .stCaption, small {
+        color: var(--text-muted) !important;
+        font-size: 0.78rem;
+    }
+
+    /* ── Dividers ───────────────────────────────────────────────────────────── */
+    hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 1rem 0;
+    }
+
+    /* ── Toast / Notification ───────────────────────────────────────────────── */
+    [data-testid="stToast"] {
+        border-radius: var(--radius);
+        font-size: 0.875rem;
+    }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface-alt); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+    /* ── Hide Streamlit chrome ──────────────────────────────────────────────── */
+    #MainMenu { visibility: hidden; }
+    footer    { visibility: hidden; }
+    header    { visibility: hidden; }
+    [data-testid="stToolbar"] { display: none; }
+</style>
 """,
     unsafe_allow_html=True,
 )
