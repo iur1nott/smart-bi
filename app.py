@@ -54,7 +54,11 @@ from presentation.components import (
 # Presentation imports
 from presentation.login import render_login_page, render_user_menu
 from presentation.sidebar import render_file_uploader, render_main_sidebar
-from presentation.widget_palette import render_column_mapping, render_widget_palette
+from presentation.widget_palette import (
+    render_column_mapper,
+    render_column_mapping,
+    render_widget_palette,
+)
 
 # Use case imports
 from use_cases.auth_service import AuthService
@@ -333,6 +337,8 @@ class SmartXLApp:
             "show_export": False,
             "show_uploader": False,
             "show_column_mapping": False,
+            "show_column_type_editor": False,
+            "pending_upload": None,
             "new_viz_type": None,
             "editing_viz_id": None,
             "notification": None,
@@ -348,25 +354,39 @@ class SmartXLApp:
                 st.session_state[key] = value
 
     def _init_services(self) -> None:
-        """Initialize application services."""
-        # Initialize database
-        try:
-            init_database()
-        except Exception as e:
-            st.warning(f"Database connection issue: {e}")
+        """
+        Initialize application services once per Streamlit session and reuse
+        them across reruns. The previous implementation rebuilt every
+        repository and re-ran ``init_database()`` (which calls
+        ``Base.metadata.create_all``) on every button click — Postgres
+        round-trips dominated each interaction. Caching here is the
+        single biggest perf win.
+        """
+        if not st.session_state.get("_services_ready"):
+            try:
+                init_database()
+            except Exception as e:
+                st.warning(f"Database connection issue: {e}")
 
-        # Initialize repositories
-        user_repo = UserRepositoryImpl()
-        file_repo = FileRepositoryImpl()
-        dashboard_repo = DashboardRepositoryImpl()
+            user_repo = UserRepositoryImpl()
+            file_repo = FileRepositoryImpl()
+            dashboard_repo = DashboardRepositoryImpl()
+            jwt_handler = JWTHandler()
 
-        # Initialize services
-        jwt_handler = JWTHandler()
-        self.auth_service = AuthService(user_repo, None, jwt_handler)
-        self.file_service = FileService(file_repo)
-        self.dashboard_service = DashboardService(dashboard_repo, file_repo)
-        self.data_service = DataService()
-        self.export_service = ExportService()
+            st.session_state.auth_service = AuthService(user_repo, None, jwt_handler)
+            st.session_state.file_service = FileService(file_repo)
+            st.session_state.dashboard_service = DashboardService(
+                dashboard_repo, file_repo
+            )
+            st.session_state.data_service = DataService()
+            st.session_state.export_service = ExportService()
+            st.session_state._services_ready = True
+
+        self.auth_service = st.session_state.auth_service
+        self.file_service = st.session_state.file_service
+        self.dashboard_service = st.session_state.dashboard_service
+        self.data_service = st.session_state.data_service
+        self.export_service = st.session_state.export_service
 
     def run(self) -> None:
         """Run the main application."""
@@ -400,6 +420,11 @@ class SmartXLApp:
 
         if st.session_state.show_export:
             self._render_export_modal()
+            return
+
+        # Column-type editor takes the whole canvas while pending
+        if st.session_state.show_column_type_editor:
+            self._render_column_type_editor_screen()
             return
 
         # Render main content
@@ -726,12 +751,95 @@ class SmartXLApp:
         return None
 
     def _process_uploaded_file(self, uploaded_file: Any) -> None:
-        """Process an uploaded XLSX file."""
+        """
+        Stage one of upload: parse the file in-memory, detect column types,
+        and route the user to the column-type editor screen. Nothing is
+        persisted to S3 or Postgres until the user confirms.
+        """
         try:
-            # Upload file to S3 and save metadata
+            file_bytes = uploaded_file.getvalue()
+            sheet, df = self.data_service.load_excel_from_bytes(
+                file_bytes=file_bytes,
+                file_name=uploaded_file.name,
+                file_id="pending",
+            )
+
+            if sheet is None or df is None:
+                st.error("Falha ao ler arquivo")
+                return
+
+            st.session_state.pending_upload = {
+                "file_bytes": file_bytes,
+                "filename": uploaded_file.name,
+                "sheet": sheet,
+                "df": df,
+            }
+            st.session_state.show_uploader = False
+            st.session_state.show_column_type_editor = True
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Erro ao ler arquivo: {str(e)}")
+
+    def _render_column_type_editor_screen(self) -> None:
+        """Show the post-upload column-type editor."""
+        pending = st.session_state.pending_upload
+        if not pending:
+            st.session_state.show_column_type_editor = False
+            st.rerun()
+            return
+
+        st.markdown(
+            "<h2 style='color:#1E293B;font-weight:700;margin-bottom:4px;'>"
+            "🛠️ Configurar Colunas</h2>"
+            "<p style='color:#64748B;margin-bottom:24px;'>"
+            f"Arquivo <b>{pending['filename']}</b> — "
+            "confirme ou ajuste o tipo detectado para cada coluna.</p>",
+            unsafe_allow_html=True,
+        )
+
+        mapping = render_column_mapper(pending["sheet"], df=pending["df"])
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            confirm = st.button(
+                "✓ Validar e criar dashboard",
+                type="primary",
+                use_container_width=True,
+            )
+        with col2:
+            cancel = st.button("✗ Cancelar", use_container_width=True)
+
+        if cancel:
+            st.session_state.pending_upload = None
+            st.session_state.show_column_type_editor = False
+            st.rerun()
+        elif confirm:
+            self._confirm_column_mapping(mapping)
+
+    def _confirm_column_mapping(self, mapping: Dict[str, str]) -> None:
+        """
+        Stage two of upload: apply the user-confirmed type mapping, upload
+        the file to S3, persist file/sheet/columns/dashboard to Postgres,
+        and seed the dashboard with a default table viz.
+        """
+        pending = st.session_state.pending_upload
+        if not pending:
+            return
+
+        try:
+            df_typed = self.data_service.cast_column_types(pending["df"], mapping)
+
+            # Apply the user's choices to the in-memory sheet so file_service
+            # persists the right data_types when it saves the new file rows.
+            for col in pending["sheet"].columns:
+                if col.column_name in mapping:
+                    col.data_type = mapping[col.column_name]
+
             file_entity = self.file_service.upload_file(
-                file_data=uploaded_file.getvalue(),
-                filename=uploaded_file.name,
+                file_data=pending["file_bytes"],
+                filename=pending["filename"],
                 user_id=st.session_state.user.user_id,
             )
 
@@ -739,58 +847,54 @@ class SmartXLApp:
                 st.error("Falha ao carregar arquivo")
                 return
 
-            # Create new dashboard
-            name = uploaded_file.name.rsplit(".", 1)[0]
+            # Override DB-side detected types with the user's choices
+            if file_entity.sheets:
+                first_sheet = file_entity.sheets[0]
+                for col in first_sheet.columns:
+                    if col.column_name in mapping:
+                        col.data_type = mapping[col.column_name]
+                self.file_service._file_repo.save_file(file_entity)
+            else:
+                st.error("Falha ao extrair planilhas do arquivo")
+                return
+
+            name = pending["filename"].rsplit(".", 1)[0]
             dashboard = self.dashboard_service.create_dashboard(
                 title=name,
                 file_id=file_entity.file_id,
             )
-
             if not dashboard:
                 st.error("Falha ao criar dashboard")
                 return
 
-            # Get the first sheet from the saved file entity (with proper UUID sheet_id)
-            if not file_entity.sheets:
-                st.error("Falha ao extrair planilhas do arquivo")
-                return
+            # Cache typed dataframe under the canonical sheet_id from the DB
+            self.data_service.set_cached_sheet(first_sheet.sheet_id, df_typed)
+            self.data_service.set_cached_data(file_entity.file_id, df_typed)
 
-            first_sheet = file_entity.sheets[0]
+            st.session_state.current_sheet_id = first_sheet.sheet_id
+            st.session_state.current_file = file_entity
 
-            # Load data into cache using the proper sheet_id from FileService
-            sheet, df = self.data_service.load_excel_from_bytes(
-                file_bytes=uploaded_file.getvalue(),
-                file_name=uploaded_file.name,
-                file_id=file_entity.file_id,
-                existing_sheet=first_sheet,  # Use the sheet with UUID sheet_id
+            self.dashboard_service.add_visualization(
+                dashboard_id=dashboard.dashboard_id,
+                sheet_id=first_sheet.sheet_id,
+                viz_type="table",
+                config=VisualizationConfig(title="Data Preview"),
             )
 
-            if sheet is not None and df is not None:
-                # Store sheet reference (now using the proper UUID sheet_id)
-                st.session_state.current_sheet_id = first_sheet.sheet_id
-                st.session_state.current_file = file_entity
-
-                # Create a visualization with the first sheet
-                self.dashboard_service.add_visualization(
-                    dashboard_id=dashboard.dashboard_id,
-                    sheet_id=first_sheet.sheet_id,  # Use the UUID sheet_id
-                    viz_type="table",
-                    config=VisualizationConfig(title="Data Preview"),
-                )
-
-            # Update session state
-            dashboard = self.dashboard_service.get_dashboard(dashboard.dashboard_id)
-            st.session_state.current_dashboard = dashboard
-            st.session_state.show_uploader = False
-            # Invalidate dashboards cache since a new dashboard was created
+            st.session_state.current_dashboard = self.dashboard_service.get_dashboard(
+                dashboard.dashboard_id
+            )
             st.session_state.dashboards_cache = None
             st.session_state.dashboards_cache_time = None
-            row_count = len(df) if df is not None else 0
-            st.success(f"✓ Carregado {row_count} linhas de {uploaded_file.name}")
+            st.session_state.pending_upload = None
+            st.session_state.show_column_type_editor = False
+            st.success(
+                f"✓ Carregado {len(df_typed)} linhas de {pending['filename']}"
+            )
             st.rerun()
 
         except Exception as e:
-            st.error(f"Erro ao carregar arquivo: {str(e)}")
+            st.error(f"Erro ao confirmar mapeamento: {str(e)}")
 
     def _get_current_sheet(self) -> Optional[FileSheet]:
         """Get the current sheet being edited."""

@@ -4,6 +4,7 @@ Updated for new schema with FileSheet and SheetColumn.
 """
 
 from typing import Callable, Optional, List, Any, Dict
+import polars as pl
 import streamlit as st
 
 from domain.entities import FileSheet, SheetColumn, VisualizationConfig
@@ -134,6 +135,122 @@ def get_numeric_columns(sheet: FileSheet) -> List[str]:
 def get_categorical_columns(sheet: FileSheet) -> List[str]:
     """Get list of categorical (string) column names."""
     return [col.column_name for col in sheet.columns if col.data_type == "String"]
+
+
+# ── Column-type editor (post-upload mapper) ─────────────────────────────────
+# Display labels shown to the user, mapped to supabase storage data_types.
+# We intentionally collapse the supabase set ("Int64", "Float64", "Datetime",
+# "Date", "Time", "Boolean", "String") into a smaller, friendlier set the way
+# dev-03 did it. The user sees 4 categories; we cast to a sensible polars type.
+_COLUMN_TYPE_LABELS = ["Numérico", "Inteiro", "Data/Hora", "Categoria", "Texto"]
+
+_LABEL_TO_DATA_TYPE = {
+    "Numérico":  "Float64",
+    "Inteiro":   "Int64",
+    "Data/Hora": "Datetime",
+    "Categoria": "String",
+    "Texto":     "String",
+}
+
+_DATA_TYPE_TO_LABEL = {
+    "Int64":    "Inteiro",
+    "Float64":  "Numérico",
+    "Datetime": "Data/Hora",
+    "Date":     "Data/Hora",
+    "Time":     "Data/Hora",
+    "Boolean":  "Categoria",
+    "String":   "Texto",
+}
+
+_LABEL_ICONS = {
+    "Numérico":  "🔢",
+    "Inteiro":   "🔢",
+    "Data/Hora": "📅",
+    "Categoria": "🏷️",
+    "Texto":     "📝",
+}
+
+_LABEL_COLORS = {
+    "Numérico":  ("#EFF6FF", "#BFDBFE"),
+    "Inteiro":   ("#EFF6FF", "#BFDBFE"),
+    "Data/Hora": ("#F0FDF4", "#BBF7D0"),
+    "Categoria": ("#FFF7ED", "#FED7AA"),
+    "Texto":     ("#F8FAFC", "#E2E8F0"),
+}
+
+
+def render_column_mapper(
+    sheet: FileSheet, df: Optional[pl.DataFrame] = None
+) -> Dict[str, str]:
+    """
+    Render a card per column showing the detected type plus a dropdown for
+    the user to override it. Returns ``{column_name: data_type_str}`` where
+    ``data_type_str`` is the supabase storage type ("Int64", "Float64",
+    "String", "Datetime").
+
+    Args:
+        sheet: FileSheet whose columns drive the mapper. ``data_type`` on
+            each ``SheetColumn`` is used as the initially-selected option.
+        df: Optional DataFrame; when present, three sample values per column
+            are rendered to help the user pick the right type.
+    """
+    mapping: Dict[str, str] = {}
+    cols_ui = st.columns(2)
+
+    for i, col in enumerate(sheet.columns):
+        detected_label = _DATA_TYPE_TO_LABEL.get(col.data_type, "Texto")
+        try:
+            initial_index = _COLUMN_TYPE_LABELS.index(detected_label)
+        except ValueError:
+            initial_index = _COLUMN_TYPE_LABELS.index("Texto")
+
+        sample_str = "—"
+        if df is not None and col.column_name in df.columns:
+            try:
+                samples = (
+                    df[col.column_name]
+                    .drop_nulls()
+                    .head(3)
+                    .cast(pl.String)
+                    .to_list()
+                )
+                if samples:
+                    sample_str = " · ".join(str(s)[:18] for s in samples)
+            except Exception:
+                sample_str = "—"
+
+        bg, border = _LABEL_COLORS.get(detected_label, ("#F8FAFC", "#E2E8F0"))
+        icon = _LABEL_ICONS.get(detected_label, "📄")
+
+        with cols_ui[i % 2]:
+            st.markdown(
+                f"""
+                <div style='background:{bg};border:1px solid {border};
+                            border-radius:8px;padding:10px 12px 4px;
+                            margin-bottom:4px;'>
+                    <div style='font-size:.82rem;font-weight:600;color:#1E293B;'>
+                        {icon} {col.column_name}
+                    </div>
+                    <div style='font-size:.72rem;color:#94A3B8;margin-bottom:6px;
+                                white-space:nowrap;overflow:hidden;
+                                text-overflow:ellipsis;'>
+                        {sample_str}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            choice_label = st.selectbox(
+                col.column_name,
+                _COLUMN_TYPE_LABELS,
+                index=initial_index,
+                key=f"col_map_{col.column_id}",
+                label_visibility="collapsed",
+            )
+            mapping[col.column_name] = _LABEL_TO_DATA_TYPE[choice_label]
+
+    return mapping
 
 
 def render_column_mapping(

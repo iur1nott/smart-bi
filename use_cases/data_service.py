@@ -261,6 +261,53 @@ class DataService:
             st.session_state.data_cache.clear()
             st.session_state.sheet_cache.clear()
 
+    # Map of supabase data_type names -> Polars dtype for casting
+    _DTYPE_MAP = {
+        "Int64": pl.Int64,
+        "Float64": pl.Float64,
+        "String": pl.String,
+        "Boolean": pl.Boolean,
+        "Date": pl.Date,
+        "Datetime": pl.Datetime,
+        "Time": pl.Time,
+    }
+
+    def cast_column_types(
+        self, df: pl.DataFrame, mapping: Dict[str, str]
+    ) -> pl.DataFrame:
+        """
+        Cast each column in `df` to the target supabase data_type given by `mapping`.
+
+        Args:
+            df: Source DataFrame.
+            mapping: {column_name: data_type_str} where data_type_str is one of
+                Int64, Float64, String, Boolean, Date, Datetime, Time.
+
+        Returns:
+            New DataFrame with columns cast. Columns whose cast fails are
+            converted to String as a safe fallback so the rest of the dataset
+            stays usable.
+        """
+        result = df
+        for col_name, target_type in mapping.items():
+            if col_name not in result.columns:
+                continue
+            polars_type = self._DTYPE_MAP.get(target_type)
+            if polars_type is None:
+                continue
+            try:
+                result = result.with_columns(
+                    pl.col(col_name).cast(polars_type, strict=False).alias(col_name)
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Cast {col_name} -> {target_type} failed ({e}); falling back to String"
+                )
+                result = result.with_columns(
+                    pl.col(col_name).cast(pl.String, strict=False).alias(col_name)
+                )
+        return result
+
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]
     ) -> pl.DataFrame:

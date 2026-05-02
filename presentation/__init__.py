@@ -12,7 +12,11 @@ from .components import (
 )
 from .login import render_login_page, render_user_menu
 from .sidebar import render_file_uploader, render_main_sidebar
-from .widget_palette import render_column_mapping, render_widget_palette
+from .widget_palette import (
+    render_column_mapper,
+    render_column_mapping,
+    render_widget_palette,
+)
 
 __all__ = [
     "render_login_page",
@@ -21,6 +25,7 @@ __all__ = [
     "render_file_uploader",
     "render_widget_palette",
     "render_column_mapping",
+    "render_column_mapper",
     "render_canvas",
     "render_settings_modal",
     "render_export_dialog",

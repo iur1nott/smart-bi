@@ -177,13 +177,21 @@ def init_database(database_url: Optional[str] = None) -> Database:
     """
     Initialize the global database instance.
 
+    Idempotent: subsequent calls return the existing instance without
+    reopening the engine or re-running ``CREATE TABLE`` metadata, which
+    would otherwise fire on every Streamlit rerun.
+
     Args:
-        database_url: Optional database URL override
+        database_url: Optional database URL override. Only honoured on
+            the first call (or after ``reset_database``).
 
     Returns:
         Initialized Database instance
     """
     global _db_instance
+    if _db_instance is not None and _db_instance._initialized:
+        return _db_instance
+
     _db_instance = Database(database_url)
     _db_instance.init_db()
     return _db_instance
