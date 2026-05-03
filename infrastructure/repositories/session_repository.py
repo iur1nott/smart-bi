@@ -7,7 +7,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 import logging
 
-from domain.entities import UserSession
+from domain.entities import AuthSession as UserSession
 from domain.repositories import SessionRepository
 from infrastructure.database import Database, get_database
 from infrastructure.models import SessionModel

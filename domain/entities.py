@@ -534,7 +534,8 @@ class User:
 
 
 @dataclass
-class UserSession:
+class AuthSession:
+    """Auth token session stored in DB (distinct from UserSession work state)."""
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""
     token: str = ""
