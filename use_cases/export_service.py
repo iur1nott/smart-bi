@@ -38,15 +38,13 @@ def _latex_escape(text: str) -> str:
 
 
 def _jinja_env() -> Environment:
+    # Use standard Jinja2 delimiters.  Jinja2 processes and removes them before
+    # pdflatex ever sees the file, so {% %} in the template never reaches LaTeX
+    # and never triggers LaTeX's % comment behaviour.
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        block_start_string=r"\BLOCK{",
-        block_end_string="}",
-        variable_start_string="{{",
-        variable_end_string="}}",
-        comment_start_string=r"\#{",
-        comment_end_string="}",
         trim_blocks=True,
+        lstrip_blocks=True,
         autoescape=False,
     )
     env.filters["latex_escape"] = _latex_escape
