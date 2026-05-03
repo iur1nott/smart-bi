@@ -380,6 +380,13 @@ class DashboardBuilderApp:
             st.session_state.analysis_service.initialize_session(
                 get_state("session_data")
             )
+            # Restore previously saved analyses from disk into the session
+            saved = st.session_state.analysis_service.load_saved_analyses()
+            session = st.session_state.analysis_service.get_session()
+            existing_ids = {a.id for a in session.analyses}
+            for analysis in saved:
+                if analysis.id not in existing_ids:
+                    session.analyses.append(analysis)
 
         if "data_service" not in st.session_state:
             st.session_state.data_service = DataService()
