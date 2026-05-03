@@ -1,73 +1,39 @@
-"""
-Domain Layer - Core business entities and value objects.
-This layer contains pure business logic with no external dependencies.
-Matches the database schema defined in smartxl_db_creator.sql
-"""
+"""Domain layer - Core business entities and value objects."""
 
 from .entities import (
-    User,
-    File,
-    FileSheet,
-    SheetColumn,
-    Dashboard,
+    Analysis,
+    Slide,
     Visualization,
-    VisualizationConfig,
+    UserSession,
+    ColumnType,
     VisualizationType,
-    ColumnDataType,
     ExportFormat,
 )
 from .value_objects import (
-    Credentials,
-    ExportOptions,
-    FilterCondition,
-    AggregationConfig,
+    FileMetadata,
     ChartColors,
     Position,
     Size,
-    Pagination,
-    SortOrder,
-    FileMetadata,
     LayoutConstraints,
+    FilterCondition,
+    AggregationConfig,
+    ExportOptions,
 )
-from .repositories import (
-    UserRepository,
-    DashboardRepository,
-    FileRepository,
-)
-
-# Type aliases for backward compatibility
-Analysis = Dashboard
-Slide = Visualization
 
 __all__ = [
-    # Entities
-    "User",
-    "File",
-    "FileSheet",
-    "SheetColumn",
-    "Dashboard",
-    "Visualization",
-    "VisualizationConfig",
-    "VisualizationType",
-    "ColumnDataType",
-    "ExportFormat",
-    # Backward compatibility aliases
     "Analysis",
     "Slide",
-    # Value Objects
-    "Credentials",
-    "ExportOptions",
-    "FilterCondition",
-    "AggregationConfig",
+    "Visualization",
+    "UserSession",
+    "ColumnType",
+    "VisualizationType",
+    "ExportFormat",
+    "FileMetadata",
     "ChartColors",
     "Position",
     "Size",
-    "Pagination",
-    "SortOrder",
-    "FileMetadata",
     "LayoutConstraints",
-    # Repository Interfaces
-    "UserRepository",
-    "DashboardRepository",
-    "FileRepository",
+    "FilterCondition",
+    "AggregationConfig",
+    "ExportOptions",
 ]

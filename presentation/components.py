@@ -1,14 +1,11 @@
 """
-Components - Reusable UI components for the dashboard builder.
-Updated for new schema with dashboards.
+Components Module - Reusable UI components.
 """
 
-from typing import Callable, Dict, Any, Optional, List
-import os
+from typing import Dict, Any, List, Optional, Callable
 import streamlit as st
 from datetime import datetime
-
-from domain.entities import Dashboard
+import os
 
 
 def render_settings_modal(current_settings: Dict[str, Any], on_save: Callable) -> None:
@@ -185,20 +182,45 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
                 st.error(f"Erro ao ler arquivo: {str(e)}")
 
 
-def render_notification(message: str, level: str = "info") -> None:
-    """Render a notification message."""
-    if level == "success":
-        st.success(message)
-    elif level == "error":
-        st.error(message)
-    elif level == "warning":
-        st.warning(message)
-    else:
-        st.info(message)
+def render_toolbar(
+    current_slide_idx: int,
+    total_slides: int,
+    on_prev: Callable,
+    on_next: Callable,
+    on_add_slide: Callable,
+    on_export: Callable,
+) -> None:
+    """Render the main toolbar."""
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+
+    with col1:
+        if st.button("⬅️", help="Previous Slide", disabled=current_slide_idx == 0):
+            on_prev()
+
+    with col2:
+        st.markdown(
+            f"<div style='text-align: center; padding-top: 8px;'>{current_slide_idx + 1} / {total_slides}</div>",
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        if st.button("➕ Add Slide", width='stretch'):
+            on_add_slide()
+
+    with col4:
+        if st.button(
+            "➡️", help="Next Slide", disabled=current_slide_idx >= total_slides - 1
+        ):
+            on_next()
+
+    with col5:
+        if st.button("📤 Export", type="primary", width='stretch'):
+            on_export()
 
 
 def render_welcome_screen(on_new_analysis: Callable) -> None:
     """Tela de boas-vindas com hero e cards de features."""
+    # Hero
     st.markdown(
         """
         <div style='text-align:center;padding:48px 16px 32px;'>
@@ -225,6 +247,7 @@ def render_welcome_screen(on_new_analysis: Callable) -> None:
 
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
 
+    # Feature cards
     features = [
         ("📊", "12 tipos de gráfico", "Colunas, Barras, Linhas, Pizza, Área, Dispersão, Histograma, Box, Heatmap e mais"),
         ("🔍", "Filtros por visual", "Filtre cada gráfico de forma independente sem afetar os demais"),
@@ -248,70 +271,31 @@ def render_welcome_screen(on_new_analysis: Callable) -> None:
             )
 
 
-def render_header_bar(
-    analysis_name: str,
-    on_save: Callable[[], None],
-    on_export: Callable[[], None],
-    on_rename: Callable[[str], None],
+def render_notification(message: str, type: str = "info") -> None:
+    """Render a notification message."""
+    if type == "info":
+        st.info(message)
+    elif type == "success":
+        st.success(message)
+    elif type == "warning":
+        st.warning(message)
+    elif type == "error":
+        st.error(message)
+
+
+def render_confirmation_dialog(
+    title: str, message: str, on_confirm: Callable, on_cancel: Callable
 ) -> None:
-    """Render the header bar with dashboard name and actions."""
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    """Render a confirmation dialog."""
+    st.markdown(f"### {title}")
+    st.markdown(message)
+
+    col1, col2 = st.columns(2)
 
     with col1:
-        new_name = st.text_input(
-            "Nome do Dashboard",
-            value=analysis_name,
-            label_visibility="collapsed",
-            key="header_dashboard_name",
-        )
-        if new_name != analysis_name:
-            on_rename(new_name)
+        if st.button("✓ Confirm", type="primary", width='stretch'):
+            on_confirm()
 
     with col2:
-        if st.button("💾 Salvar", use_container_width=True):
-            on_save()
-
-    with col3:
-        if st.button("📤 Exportar", type="primary", use_container_width=True):
-            on_export()
-
-
-def render_dashboard_history(
-    dashboards: list,
-    current_dashboard_id: Optional[str],
-    on_select: Callable[[str], None],
-    on_delete: Callable[[str], None],
-) -> None:
-    """Render the dashboard history list."""
-    st.markdown("### 📜 Dashboards")
-
-    if not dashboards:
-        st.info("Nenhum dashboard anterior")
-        return
-
-    for dashboard in dashboards:
-        is_current = dashboard.dashboard_id == current_dashboard_id
-
-        with st.container():
-            col1, col2 = st.columns([4, 1])
-
-            with col1:
-                if is_current:
-                    st.markdown(f"**▶ {dashboard.title}**")
-                else:
-                    if st.button(
-                        f"📂 {dashboard.title}",
-                        key=f"history_item_{dashboard.dashboard_id}",
-                        use_container_width=True,
-                    ):
-                        on_select(dashboard.dashboard_id)
-
-            with col2:
-                if st.button("🗑️", key=f"delete_history_{dashboard.dashboard_id}"):
-                    on_delete(dashboard.dashboard_id)
-                    st.rerun()
-
-            st.caption(
-                f"{len(dashboard.visualizations)} visualizações • {dashboard.created_at.strftime('%d/%m/%Y %H:%M')}"
-            )
-            st.markdown("---")
+        if st.button("✗ Cancel", width='stretch'):
+            on_cancel()

@@ -1,225 +1,84 @@
 """
 Data Service - Handles data processing and transformation operations.
 Follows Single Responsibility Principle - only handles data operations.
-Updated to work with new file-based schema.
 """
 
-import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
+import io
+from typing import Dict, List, Any, Optional, Tuple
 import polars as pl
-import streamlit as st
+from pathlib import Path
 
-from config import Constants, settings
 from domain.entities import (
+    Analysis,
+    DataSchema,
+    Column,
     ColumnType,
-    Dashboard,
-    File,
-    FileSheet,
-    SheetColumn,
     Visualization,
     VisualizationConfig,
     VisualizationType,
+    Slide,
 )
-from domain.value_objects import AggregationConfig, FilterCondition
-from infrastructure.storage.s3_client import get_s3_client
-
-logger = logging.getLogger(__name__)
+from domain.value_objects import FilterCondition, AggregationConfig
 
 
 class DataService:
     """
     Service responsible for data operations including:
-    - Loading and parsing XLSX files from S3
+    - Loading and parsing XLSX files
     - Schema inference and column type detection
     - Data filtering and aggregation
     - Data transformation for visualizations
-    - Caching data in Streamlit session state
     """
 
     def __init__(self):
         """Initialize the data service."""
-        # Use session state for caching
-        if "data_cache" not in st.session_state:
-            st.session_state.data_cache = {}
-        if "sheet_cache" not in st.session_state:
-            st.session_state.sheet_cache = {}
+        self._data_cache: Dict[str, pl.DataFrame] = {}
 
-    @property
-    def _data_cache(self) -> Dict[str, pl.DataFrame]:
-        """Get the data cache from session state."""
-        return st.session_state.data_cache
-
-    @property
-    def _sheet_cache(self) -> Dict[str, pl.DataFrame]:
-        """Get the sheet cache from session state."""
-        return st.session_state.sheet_cache
-
-    def _clean_duplicate_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def load_excel_file(
+        self, file_path: str, analysis_id: str
+    ) -> Tuple[DataSchema, pl.DataFrame]:
         """
-        Rename duplicate column names to make them unique.
+        Load an Excel file and return its schema and data.
 
         Args:
-            df: Polars DataFrame that may have duplicate column names
+            file_path: Path to the Excel file
+            analysis_id: ID of the analysis for caching
 
         Returns:
-            DataFrame with unique column names
+            Tuple of DataSchema and Polars DataFrame
         """
-        columns = df.columns
-        seen = {}
-        new_columns = []
+        # Read the Excel file using Polars
+        df = pl.read_excel(file_path)
 
-        for col in columns:
-            if col in seen:
-                seen[col] += 1
-                new_columns.append(f"{col}_{seen[col]}")
-            else:
-                seen[col] = 0
-                new_columns.append(col)
+        # Cache the dataframe
+        self._data_cache[analysis_id] = df
 
-        if new_columns != columns:
-            logger.warning(
-                f"Detected duplicate column names, renamed: {dict(zip(columns, new_columns))}"
-            )
-            df = df.rename(dict(zip(columns, new_columns)))
+        # Generate schema
+        schema = self._infer_schema(df, file_path)
 
-        return df
-
-    def load_excel_from_streamlit(
-        self, uploaded_file: Any, file_id: str, sheet_name: Optional[str] = None
-    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
-        """
-        Load an Excel file from Streamlit's file uploader.
-
-        Args:
-            uploaded_file: Streamlit UploadedFile object
-            file_id: ID for caching
-            sheet_name: Optional sheet name (uses first sheet if not specified)
-
-        Returns:
-            Tuple of (FileSheet, DataFrame), or (None, None) on failure
-        """
-        file_bytes = uploaded_file.getvalue()
-        return self.load_excel_from_bytes(
-            file_bytes, uploaded_file.name, file_id, sheet_name
-        )
+        return schema, df
 
     def load_excel_from_bytes(
-        self,
-        file_bytes: bytes,
-        file_name: str,
-        file_id: str,
-        sheet_name: Optional[str] = None,
-        existing_sheet: Optional[FileSheet] = None,
-    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
+        self, file_bytes: bytes, file_name: str, analysis_id: str
+    ) -> Tuple[DataSchema, pl.DataFrame]:
         """
-        Load an Excel file from bytes.
+        Load an Excel file from bytes and return its schema and data.
 
         Args:
             file_bytes: Raw bytes of the Excel file
             file_name: Original file name
-            file_id: ID for caching
-            sheet_name: Optional sheet name (uses first sheet if not specified)
-            existing_sheet: Optional existing FileSheet entity to use its sheet_id
+            analysis_id: ID of the analysis for caching
 
         Returns:
-            Tuple of (FileSheet, DataFrame), or (None, None) on failure
+            Tuple of DataSchema and Polars DataFrame
         """
-        try:
-            import io
-
-            # Get sheet names
-            sheet_names = self._get_sheet_names(file_bytes)
-            if not sheet_names:
-                return None, None
-
-            # Determine which sheet to read
-            target_sheet = sheet_name or sheet_names[0]
-            if target_sheet not in sheet_names:
-                target_sheet = sheet_names[0]
-
-            # Read the data
-            df = pl.read_excel(io.BytesIO(file_bytes), sheet_name=target_sheet)
-            df = self._clean_duplicate_columns(df)
-
-            # Use existing sheet or create new one
-            if existing_sheet:
-                sheet = existing_sheet
-                sheet_id = sheet.sheet_id
-            else:
-                # Create FileSheet entity with composite ID (for backward compatibility)
-                sheet_id = f"{file_id}_{target_sheet}"
-                sheet = FileSheet(
-                    sheet_id=sheet_id,
-                    file_id=file_id,
-                    sheet_name=target_sheet,
-                )
-
-                # Extract columns
-                columns = []
-                for col_name in df.columns:
-                    col_series = df[col_name]
-                    polars_type = str(col_series.dtype)
-                    db_type = Constants.POLARS_TO_DB_TYPE.get(polars_type, "String")
-
-                    column = SheetColumn(
-                        column_id=f"{sheet_id}_{col_name}",
-                        sheet_id=sheet_id,
-                        column_name=col_name,
-                        data_type=db_type,
-                    )
-                    columns.append(column)
-
-                sheet.columns = columns
-
-            # Cache the DataFrame with the proper sheet_id
-            st.session_state.sheet_cache[sheet_id] = df
-            st.session_state.data_cache[file_id] = df
-
-            return sheet, df
-
-        except Exception as e:
-            logger.error(f"Error loading Excel file: {e}")
-            return None, None
-
-    def load_file_from_s3(
-        self,
-        storage_path: str,
-        file_id: str,
-        sheet_name: Optional[str] = None,
-        existing_sheet: Optional[FileSheet] = None,
-    ) -> Tuple[Optional[FileSheet], Optional[pl.DataFrame]]:
-        """
-        Load an Excel file from S3.
-
-        Args:
-            storage_path: S3 path to the file
-            file_id: ID for caching
-            sheet_name: Optional sheet name (uses first sheet if not specified)
-            existing_sheet: Optional existing FileSheet entity to use its sheet_id
-
-        Returns:
-            Tuple of (FileSheet, DataFrame), or (None, None) on failure
-        """
-        try:
-            s3_client = get_s3_client()
-            file_bytes = s3_client.download_file(storage_path)
-
-            if not file_bytes:
-                return None, None
-
-            return self.load_excel_from_bytes(
-                file_bytes, "file.xlsx", file_id, sheet_name, existing_sheet
-            )
-
-        except Exception as e:
-            logger.error(f"Error loading file from S3: {e}")
-            return None, None
+        df = pl.read_excel(io.BytesIO(file_bytes))
+        self._data_cache[analysis_id] = df
+        schema = self._infer_schema(df, file_name, len(file_bytes))
+        return schema, df
 
     def _get_sheet_names(self, file_bytes: bytes) -> List[str]:
         """Get all sheet names from an Excel file."""
-        import io
         from openpyxl import load_workbook
 
         try:
@@ -227,84 +86,189 @@ class DataService:
             names = wb.sheetnames
             wb.close()
             return names
-        except Exception as e:
-            logger.error(f"Error getting sheet names: {e}")
+        except Exception:
             return ["Sheet1"]
 
-    def get_cached_data(self, file_id: str) -> Optional[pl.DataFrame]:
-        """Get cached DataFrame for a file."""
-        return st.session_state.data_cache.get(file_id)
-
-    def get_cached_sheet(self, sheet_id: str) -> Optional[pl.DataFrame]:
-        """Get cached DataFrame for a sheet."""
-        return st.session_state.sheet_cache.get(sheet_id)
-
-    def set_cached_data(self, file_id: str, df: pl.DataFrame) -> None:
-        """Set cached DataFrame for a file."""
-        st.session_state.data_cache[file_id] = df
-
-    def set_cached_sheet(self, sheet_id: str, df: pl.DataFrame) -> None:
-        """Set cached DataFrame for a sheet."""
-        st.session_state.sheet_cache[sheet_id] = df
-
-    def clear_cache(
-        self, file_id: Optional[str] = None, sheet_id: Optional[str] = None
-    ):
-        """Clear cached data."""
-        if file_id:
-            st.session_state.data_cache.pop(file_id, None)
-        if sheet_id:
-            st.session_state.sheet_cache.pop(sheet_id, None)
-        if not file_id and not sheet_id:
-            st.session_state.data_cache.clear()
-            st.session_state.sheet_cache.clear()
-
-    # Map of supabase data_type names -> Polars dtype for casting
-    _DTYPE_MAP = {
-        "Int64": pl.Int64,
-        "Float64": pl.Float64,
-        "String": pl.String,
-        "Boolean": pl.Boolean,
-        "Date": pl.Date,
-        "Datetime": pl.Datetime,
-        "Time": pl.Time,
-    }
-
-    def cast_column_types(
-        self, df: pl.DataFrame, mapping: Dict[str, str]
-    ) -> pl.DataFrame:
+    def _infer_schema(
+        self, df: pl.DataFrame, file_name: str, file_size: int = 0
+    ) -> DataSchema:
         """
-        Cast each column in `df` to the target supabase data_type given by `mapping`.
+        Infer the schema of a DataFrame including column types and statistics.
 
         Args:
-            df: Source DataFrame.
-            mapping: {column_name: data_type_str} where data_type_str is one of
-                Int64, Float64, String, Boolean, Date, Datetime, Time.
+            df: Polars DataFrame to analyze
+            file_name: Name of the source file
+            file_size: Size of the source file in bytes
 
         Returns:
-            New DataFrame with columns cast. Columns whose cast fails are
-            converted to String as a safe fallback so the rest of the dataset
-            stays usable.
+            DataSchema object with inferred types and statistics
         """
-        result = df
-        for col_name, target_type in mapping.items():
-            if col_name not in result.columns:
-                continue
-            polars_type = self._DTYPE_MAP.get(target_type)
-            if polars_type is None:
-                continue
+        columns = []
+
+        for col_name in df.columns:
+            col_series = df[col_name]
+            col_type = self._detect_column_type(col_series)
+
+            # Get sample values
+            sample_values = col_series.drop_nulls().head(10).to_list()
+
+            # Calculate statistics
+            statistics = self._calculate_statistics(col_series, col_type)
+
+            column = Column(
+                name=col_name,
+                data_type=col_type,
+                sample_values=sample_values,
+                null_count=col_series.null_count(),
+                unique_count=col_series.n_unique(),
+                statistics=statistics,
+            )
+            columns.append(column)
+
+        return DataSchema(
+            columns=columns, row_count=len(df), file_name=file_name, file_size=file_size
+        )
+
+    def _detect_column_type(self, series: pl.Series) -> ColumnType:
+        """
+        Detect the type of a column based on its data.
+
+        Args:
+            series: Polars Series to analyze
+
+        Returns:
+            ColumnType enum value
+        """
+        dtype = series.dtype
+
+        # Check Polars dtype
+        if dtype in [
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
+        ]:
+            return ColumnType.NUMERIC
+
+        if dtype in [pl.Date, pl.Datetime, pl.Time]:
+            return ColumnType.DATETIME
+
+        if dtype == pl.Boolean:
+            return ColumnType.BOOLEAN
+
+        # For string types, try to infer further
+        if dtype == pl.String or dtype == pl.Utf8:
+            # Check if it could be categorical
+            null_count = series.null_count()
+            non_null_count = len(series) - null_count
+
+            if non_null_count == 0:
+                return ColumnType.UNKNOWN
+
+            unique_ratio = (
+                series.n_unique() / non_null_count if non_null_count > 0 else 1.0
+            )
+
+            # If unique ratio is low, it's likely categorical
+            if unique_ratio < 0.5:
+                return ColumnType.CATEGORICAL
+
+            # Check if values look like dates
+            sample = series.drop_nulls().head(100).to_list()
+            if sample and self._looks_like_datetime(sample):
+                return ColumnType.DATETIME
+
+            # Default to text for high cardinality strings
+            if unique_ratio > 0.8:
+                return ColumnType.TEXT
+
+            return ColumnType.CATEGORICAL
+
+        return ColumnType.UNKNOWN
+
+    def _looks_like_datetime(self, values: List[str]) -> bool:
+        """Check if string values look like datetime values."""
+        import re
+
+        date_patterns = [
+            r"^\d{4}-\d{2}-\d{2}",  # YYYY-MM-DD
+            r"^\d{2}/\d{2}/\d{4}",  # MM/DD/YYYY or DD/MM/YYYY
+            r"^\d{2}-\d{2}-\d{4}",  # DD-MM-YYYY
+            r"^\d{4}/\d{2}/\d{2}",  # YYYY/MM/DD
+        ]
+
+        if not values:
+            return False
+
+        matches = 0
+        for val in values[:10]:
+            if any(re.match(pattern, str(val)) for pattern in date_patterns):
+                matches += 1
+
+        return matches / min(len(values), 10) > 0.7
+
+    def _calculate_statistics(
+        self, series: pl.Series, col_type: ColumnType
+    ) -> Dict[str, Any]:
+        """
+        Calculate statistics for a column based on its type.
+
+        Args:
+            series: Polars Series to analyze
+            col_type: Detected column type
+
+        Returns:
+            Dictionary of statistics
+        """
+        stats = {}
+
+        if col_type == ColumnType.NUMERIC:
             try:
-                result = result.with_columns(
-                    pl.col(col_name).cast(polars_type, strict=False).alias(col_name)
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Cast {col_name} -> {target_type} failed ({e}); falling back to String"
-                )
-                result = result.with_columns(
-                    pl.col(col_name).cast(pl.String, strict=False).alias(col_name)
-                )
-        return result
+                non_null = series.drop_nulls()
+                if len(non_null) > 0:
+                    stats["min"] = float(non_null.min())
+                    stats["max"] = float(non_null.max())
+                    stats["mean"] = float(non_null.mean())
+                    stats["median"] = float(non_null.median())
+                    stats["std"] = float(non_null.std()) if len(non_null) > 1 else 0.0
+                    stats["sum"] = float(non_null.sum())
+            except Exception:
+                pass
+
+        elif col_type == ColumnType.CATEGORICAL:
+            try:
+                value_counts = series.value_counts().sort("count", descending=True)
+                stats["top_values"] = value_counts.head(10).to_dicts()
+            except Exception:
+                pass
+
+        elif col_type == ColumnType.DATETIME:
+            try:
+                non_null = series.drop_nulls()
+                if len(non_null) > 0:
+                    stats["min_date"] = str(non_null.min())
+                    stats["max_date"] = str(non_null.max())
+            except Exception:
+                pass
+
+        return stats
+
+    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+        """Get cached DataFrame for an analysis."""
+        return self._data_cache.get(analysis_id)
+
+    def clear_cache(self, analysis_id: Optional[str] = None):
+        """Clear cached data for specific analysis or all."""
+        if analysis_id:
+            self._data_cache.pop(analysis_id, None)
+        else:
+            self._data_cache.clear()
 
     def apply_filters(
         self, df: pl.DataFrame, filters: List[FilterCondition]
@@ -401,57 +365,105 @@ class DataService:
 
         return result
 
-    def prepare_chart_data(
-        self,
-        df: pl.DataFrame,
-        config: VisualizationConfig,
-    ) -> pl.DataFrame:
+    def prepare_visualization_data(
+        self, df: pl.DataFrame, config: VisualizationConfig
+    ) -> Dict[str, Any]:
         """
-        Prepare data for chart visualization.
+        Prepare data for a specific visualization type.
 
         Args:
             df: Input DataFrame
             config: Visualization configuration
 
         Returns:
-            Prepared DataFrame for charting
+            Dictionary with processed data ready for visualization
         """
-        result = df
+        result = {"type": config.visualization_type.value}
 
-        # Handle aggregation
-        if config.x_column and config.y_column:
-            if config.aggregation and config.aggregation != "none":
-                agg_col = pl.col(config.y_column)
+        # Apply aggregation if needed
+        if config.x_column and config.y_column and config.aggregation:
+            if config.visualization_type not in [
+                VisualizationType.SCATTER_PLOT,
+                VisualizationType.HISTOGRAM,
+            ]:
+                agg_config = AggregationConfig(
+                    group_by_columns=(config.x_column,),
+                    aggregation_column=config.y_column,
+                    aggregation_function=config.aggregation,
+                )
+                df = self.apply_aggregation(df, agg_config)
 
-                if config.aggregation == "sum":
-                    agg_expr = agg_col.sum()
-                elif config.aggregation == "mean":
-                    agg_expr = agg_col.mean()
-                elif config.aggregation == "count":
-                    agg_expr = agg_col.count()
-                elif config.aggregation == "min":
-                    agg_expr = agg_col.min()
-                elif config.aggregation == "max":
-                    agg_expr = agg_col.max()
-                elif config.aggregation == "median":
-                    agg_expr = agg_col.median()
-                else:
-                    agg_expr = agg_col.sum()
+        # Extract data based on visualization type
+        if config.visualization_type == VisualizationType.TABLE:
+            result["data"] = df.to_pandas().to_dict(orient="records")
+            result["columns"] = df.columns
 
-                group_cols = [config.x_column]
-                if config.color_column and config.color_column != config.x_column:
-                    group_cols.append(config.color_column)
+        elif config.visualization_type in [
+            VisualizationType.LINE_CHART,
+            VisualizationType.BAR_CHART,
+            VisualizationType.COLUMN_CHART,
+            VisualizationType.AREA_CHART,
+        ]:
+            if config.x_column:
+                result["x"] = df[config.x_column].to_list()
+            if config.y_column:
+                agg_col_name = (
+                    f"{config.y_column}_{config.aggregation}"
+                    if config.aggregation != "sum"
+                    else config.y_column
+                )
+                y_col = agg_col_name if agg_col_name in df.columns else config.y_column
+                result["y"] = df[y_col].to_list()
+            if config.color_column:
+                result["color"] = df[config.color_column].to_list()
 
-                result = df.group_by(group_cols).agg(agg_expr.alias(config.y_column))
+        elif config.visualization_type == VisualizationType.PIE_CHART:
+            if config.x_column and config.y_column:
+                agg_col_name = (
+                    f"{config.y_column}_{config.aggregation}"
+                    if config.aggregation != "sum"
+                    else config.y_column
+                )
+                y_col = agg_col_name if agg_col_name in df.columns else config.y_column
+                result["labels"] = df[config.x_column].to_list()
+                result["values"] = df[y_col].to_list()
+
+        elif config.visualization_type == VisualizationType.SCATTER_PLOT:
+            if config.x_column:
+                result["x"] = df[config.x_column].to_list()
+            if config.y_column:
+                result["y"] = df[config.y_column].to_list()
+            if config.color_column:
+                result["color"] = df[config.color_column].to_list()
+            if config.size_column:
+                result["size"] = df[config.size_column].to_list()
+
+        elif config.visualization_type == VisualizationType.HISTOGRAM:
+            if config.x_column:
+                result["x"] = df[config.x_column].to_list()
+
+        elif config.visualization_type == VisualizationType.BOX_PLOT:
+            if config.y_column:
+                result["y"] = df[config.y_column].to_list()
+            if config.x_column:
+                result["x"] = df[config.x_column].to_list()
+
+        elif config.visualization_type == VisualizationType.METRIC_CARD:
+            if config.y_column:
+                col = df[config.y_column]
+                result["value"] = (
+                    float(col.mean())
+                    if config.aggregation == "mean"
+                    else float(col.sum())
+                )
+                result["format"] = "number"
 
         return result
 
     def get_column_unique_values(
-        self, df: pl.DataFrame, column_name: str, limit: Optional[int] = None
+        self, df: pl.DataFrame, column_name: str, limit: int = 100
     ) -> List[Any]:
         """Get unique values from a column."""
-        if limit is None:
-            limit = settings.data.max_unique_values_display
         return df[column_name].unique().head(limit).to_list()
 
     def get_numeric_summary(
@@ -471,13 +483,13 @@ class DataService:
 
     def validate_and_cast_types(self, df: pl.DataFrame, schema_overrides: Dict[str, ColumnType]) -> pl.DataFrame:
         """
-        Força a conversão de colunas para os tipos esperados, 
+        Força a conversão de colunas para os tipos esperados,
         limpando dados sujos em colunas numéricas.
         """
         for col_name, expected_type in schema_overrides.items():
             if col_name not in df.columns:
                 continue
-                
+
             if expected_type == ColumnType.NUMERIC:
                 # Limpeza: remove R$, espaços e trata a vírgula como ponto
                 df = df.with_columns(
@@ -502,7 +514,7 @@ class DataService:
 
     def rename_columns(self, df: pl.DataFrame, mapping: Dict[str, str]) -> pl.DataFrame:
         """
-        Renomeia colunas evitando duplicatas. 
+        Renomeia colunas evitando duplicatas.
         Se o usuário mapear duas colunas para 'Categoria', vira 'Categoria' e 'Categoria_1'.
         """
         new_names = []
@@ -531,7 +543,18 @@ class DataService:
         Armazena o DataFrame processado no cache para ser utilizado
         pelas visualizações da análise.
         """
-        st.session_state.data_cache[analysis_id] = df
+        if not hasattr(self, "_data_cache"):
+            self._data_cache = {}
+
+        self._data_cache[analysis_id] = df
+
+    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+        """
+        Recupera os dados armazenados para uma análise específica.
+        """
+        if hasattr(self, "_data_cache"):
+            return self._data_cache.get(analysis_id)
+        return None
 
     def compute_measures(self, df: pl.DataFrame, measures: list) -> pl.DataFrame:
         """

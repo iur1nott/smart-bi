@@ -3,37 +3,13 @@ PDF Generator - Exportação da análise para PDF usando ReportLab.
 Gera todos os visuais empilhados (gráficos, tabelas, métricas) com filtros aplicados.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
-import io
+from typing import List, Dict, Any, Optional
 import os
+import io
 from datetime import datetime
-import logging
 
 from domain.entities import Analysis, Visualization, VisualizationType
 from domain.value_objects import ExportOptions
-
-logger = logging.getLogger(__name__)
-
-try:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, LETTER, LEGAL
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import mm
-    from reportlab.platypus import (
-        SimpleDocTemplate,
-        Paragraph,
-        Spacer,
-        Table,
-        TableStyle,
-        Image,
-        PageBreak,
-    )
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-
-    HAS_REPORTLAB = True
-except ImportError:
-    HAS_REPORTLAB = False
-    logger.warning("reportlab not installed. PDF export will be limited.")
 
 
 class PDFGenerator:
@@ -198,7 +174,7 @@ class PDFGenerator:
 
             for viz in vizs:
                 vtype = viz.config.visualization_type
-                viz_title = viz.config.title
+                viz_title = viz.config.title  # só mostra se o usuário definiu
 
                 if viz_title:
                     story.append(Paragraph(viz_title, style_viz_title))
@@ -253,7 +229,7 @@ class PDFGenerator:
         from reportlab.lib.units import inch
 
         usable_width = page_size[0] - 2 * margin
-        max_height = page_size[1] * 0.45
+        max_height = page_size[1] * 0.45  # max 45% da página
 
         buf = io.BytesIO(img_bytes)
         img = Image(buf, width=usable_width, height=max_height, kind="proportional")

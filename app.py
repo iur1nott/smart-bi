@@ -1,86 +1,47 @@
 """
-SmartXL Dashboard Builder - Main Application Entry Point
+Dashboard Builder - Main Application Entry Point
 A Streamlit application for building dashboards from Excel data.
-Following Clean Architecture with SOLID principles.
 
-Features:
-- User authentication with PostgreSQL
-- S3-compatible file storage (AWS, Supabase, MinIO)
-- Dashboard and visualization management
-- Canvas-based visualization editing
+This application follows Clean Architecture principles:
+- Domain Layer: Core business entities and value objects
+- Use Cases Layer: Application services and business logic
+- Infrastructure Layer: External services and implementations
+- Presentation Layer: Streamlit UI components
 """
 
-import logging
+import streamlit as st
+import polars as pl
+from typing import Optional, Dict, Any
 import os
 import sys
-from typing import Any, Dict, Optional
-
-import polars as pl
-import streamlit as st
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-logger = logging.getLogger(__name__)
-
-# Domain imports
+# Import application components
 from domain.entities import (
     Analysis,
-    ColumnType,
-    Dashboard,
-    File,
-    FileSheet,
-    User,
+    Slide,
     Visualization,
     VisualizationConfig,
     VisualizationType,
+    ColumnType,  # Adicionado para suportar a Task de Validação de Tipagem
+    User,
 )
 from domain.value_objects import ExportOptions
-from infrastructure.auth import JWTHandler
-
-# Infrastructure imports
-from infrastructure.chart_factory import ChartFactory
-from infrastructure.database import get_database, init_database
-from infrastructure.pdf_generator import PDFGenerator
-from infrastructure.repositories import (
-    DashboardRepositoryImpl,
-    FileRepositoryImpl,
-    UserRepositoryImpl,
-)
-from infrastructure.storage import get_s3_client
-from presentation.canvas import render_canvas, render_slide_navigator
-from presentation.components import (
-    render_export_dialog,
-    render_header_bar,
-    render_notification,
-    render_settings_modal,
-    render_welcome_screen,
-)
-
-# Presentation imports
-from presentation.login import render_login_page, render_user_menu
-from presentation.sidebar import (
-    render_file_uploader,
-    render_main_sidebar,
-    render_sidebar,
-)
-from presentation.widget_palette import (
-    render_column_mapper,
-    render_column_mapping,
-    render_viz_config_dialog,
-    render_widget_palette,
-)
-from presentation.widgets import (
-    render_data_preview,
-    render_widget_palette as render_widget_palette_v2,
-)
-
-# Use case imports
-from use_cases.auth_service import AuthService
-from use_cases.dashboard_service import DashboardService
+from use_cases.analysis_service import AnalysisService, FileAnalysisRepository
 from use_cases.data_service import DataService
 from use_cases.export_service import ExportService
-from use_cases.file_service import FileService
+from infrastructure.auth import JWTHandler
+from infrastructure.database import get_database, init_database
+from infrastructure.repositories import (
+    UserRepositoryImpl,
+    FileRepositoryImpl,
+    DashboardRepositoryImpl,
+)
+from infrastructure.storage import get_s3_client
+from infrastructure.chart_factory import ChartFactory
+from infrastructure.pdf_generator import PDFGenerator
 from utils.session_state import (
     SessionStateManager,
     init_session_state,
@@ -88,20 +49,39 @@ from utils.session_state import (
     set_state,
 )
 
+# Import presentation components
+from presentation.sidebar import render_sidebar, render_secondary_sidebar
+from presentation.canvas import render_canvas, render_slide_navigator
+from presentation.widgets import (
+    render_widget_palette,
+    # render_visualization_config,
+    render_data_preview,
+    render_column_mapper, # Adicionado para suportar a Task de Renomeação
+)
+from presentation.components import (
+    render_settings_modal,
+    render_analysis_history,
+    render_export_dialog,
+    render_welcome_screen,
+    render_notification,
+)
+from presentation.login import render_login_page, render_user_menu
+from use_cases.auth_service import AuthService
+
 # Configure Streamlit page
 st.set_page_config(
-    page_title="SmartXL - Dashboard Builder",
+    page_title="Dashboard Builder",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
         "Get Help": None,
         "Report a bug": None,
-        "About": "SmartXL - Crie dashboards profissionais",
+        "About": "Dashboard Builder - Create beautiful dashboards from Excel data",
     },
 )
 
-# Apply custom CSS (pastel design tokens ported from dev-03)
+# Apply custom CSS
 st.markdown(
     """
 <style>
@@ -332,7 +312,6 @@ st.markdown(
     /* ── Hide Streamlit chrome ──────────────────────────────────────────────── */
     #MainMenu { visibility: hidden; }
     footer    { visibility: hidden; }
-    header    { visibility: hidden; }
     [data-testid="stToolbar"] { display: none; }
 </style>
 """,
@@ -340,48 +319,42 @@ st.markdown(
 )
 
 
-class SmartXLApp:
-    """Main application class following the Facade pattern."""
+class DashboardBuilderApp:
+    """
+    Main application class.
+    Coordinates between UI components and services.
+    """
 
     def __init__(self):
-        """Initialize the application with all required services."""
+        """Initialize the application."""
+        # Initialize session state
         self._init_session_state()
+
+        # Initialize services
         self._init_services()
+
+        # Initialize chart factory
+        self.chart_factory = ChartFactory()
 
     def _init_session_state(self) -> None:
         """Initialize Streamlit session state with default values."""
-        defaults = {
-            "user": None,
-            "current_dashboard": None,
-            "current_sheet_id": None,
-            "show_settings": False,
-            "show_export": False,
-            "show_uploader": False,
-            "show_column_mapping": False,
-            "show_column_type_editor": False,
-            "pending_upload": None,
-            "new_viz_type": None,
-            "editing_viz_id": None,
-            "notification": None,
-            "data_cache": {},
-            "sheet_cache": {},
-            "current_file": None,
-            "dashboards_cache": None,
-            "dashboards_cache_time": None,
-        }
+        # Run the original session state initializer first
+        init_session_state()
 
-        for key, value in defaults.items():
+        # Ensure auth-specific keys are present
+        auth_defaults = {
+            "user": None,
+            "_services_ready": False,
+        }
+        for key, value in auth_defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = value
 
     def _init_services(self) -> None:
         """
         Initialize application services once per Streamlit session and reuse
-        them across reruns. The previous implementation rebuilt every
-        repository and re-ran ``init_database()`` (which calls
-        ``Base.metadata.create_all``) on every button click — Postgres
-        round-trips dominated each interaction. Caching here is the
-        single biggest perf win.
+        them across reruns. Services are cached in st.session_state to avoid
+        re-running DB init (Base.metadata.create_all) on every button click.
         """
         if not st.session_state.get("_services_ready"):
             try:
@@ -390,627 +363,532 @@ class SmartXLApp:
                 st.warning(f"Database connection issue: {e}")
 
             user_repo = UserRepositoryImpl()
-            file_repo = FileRepositoryImpl()
-            dashboard_repo = DashboardRepositoryImpl()
             jwt_handler = JWTHandler()
 
             st.session_state.auth_service = AuthService(user_repo, None, jwt_handler)
-            st.session_state.file_service = FileService(file_repo)
-            st.session_state.dashboard_service = DashboardService(
-                dashboard_repo, file_repo
-            )
-            st.session_state.data_service = DataService()
-            st.session_state.export_service = ExportService()
             st.session_state._services_ready = True
 
         self.auth_service = st.session_state.auth_service
-        self.file_service = st.session_state.file_service
-        self.dashboard_service = st.session_state.dashboard_service
-        self.data_service = st.session_state.data_service
-        self.export_service = st.session_state.export_service
-        self.chart_factory = ChartFactory()
-        self.pdf_generator = PDFGenerator()
 
-    def run(self) -> None:
-        """Run the main application."""
-        # Check if user is logged in
-        if not st.session_state.user:
-            self._render_login_flow()
-        else:
-            self._render_main_application()
+        # Always set up dev-03 services if not already present
+        data_dir = "data"
+        os.makedirs(data_dir, exist_ok=True)
+
+        if "analysis_service" not in st.session_state:
+            repository = FileAnalysisRepository(data_dir)
+            st.session_state.analysis_service = AnalysisService(repository)
+            st.session_state.analysis_service.initialize_session(
+                get_state("session_data")
+            )
+
+        if "data_service" not in st.session_state:
+            st.session_state.data_service = DataService()
+
+        if "export_service" not in st.session_state:
+            st.session_state.export_service = ExportService()
+
+        if "pdf_generator" not in st.session_state:
+            st.session_state.pdf_generator = PDFGenerator()
+
+    @property
+    def analysis_service(self) -> AnalysisService:
+        return st.session_state.analysis_service
+
+    @property
+    def data_service(self) -> DataService:
+        return st.session_state.data_service
+
+    @property
+    def export_service(self) -> ExportService:
+        return st.session_state.export_service
+
+    @property
+    def pdf_generator(self) -> PDFGenerator:
+        return st.session_state.pdf_generator
 
     def _render_login_flow(self) -> None:
         """Render the login/registration flow."""
 
         def on_login_success(user: User, session: Any) -> None:
             st.session_state.user = user
-            self.dashboard_service.set_current_user(user.user_id)
 
         render_login_page(self.auth_service, on_login_success)
 
-    def _render_main_application(self) -> None:
-        """Render the main application for logged-in users."""
-        # Set user context
-        self.dashboard_service.set_current_user(st.session_state.user.user_id)
-
-        # Render sidebar
-        self._render_sidebar()
-
-        # Check for modals
-        if st.session_state.show_settings:
-            self._render_settings_modal()
+    def run(self) -> None:
+        """Run the main application."""
+        # Check authentication before rendering the app
+        if not st.session_state.user:
+            self._render_login_flow()
             return
 
-        if st.session_state.show_export:
-            self._render_export_modal()
-            return
+        # 1. Renderizar Sidebar com a ligação correta para o processamento
+        render_sidebar(
+            analysis_service=self.analysis_service,
+            on_new_analysis=self._on_new_analysis,
+            on_select_analysis=self._on_select_analysis,
+            on_settings_click=lambda: set_state("show_settings", True),
+            on_upload=self._process_uploaded_file
+        )
 
-        # Column-type editor takes the whole canvas while pending
-        if st.session_state.show_column_type_editor:
-            self._render_column_type_editor_screen()
-            return
+        # 2. Renderizar cabeçalho
+        self._render_header()
 
-        # Render main content
-        if not st.session_state.current_dashboard:
-            render_welcome_screen(self._on_new_dashboard)
-            if st.session_state.show_uploader:
-                self._render_uploader_dialog()
+        # 3. Verificar o estado atual para decidir o que mostrar
+        current_analysis = self.analysis_service.get_current_analysis()
+
+        if get_state("show_column_mapper"):
+            # Mostra a tela de mapeamento (Task 2)
+            self._render_mapping_screen()
+        elif not current_analysis:
+            # Mostra tela de boas-vindas
+            render_welcome_screen(self._on_new_analysis)
+            self._render_uploader_dialog()
         else:
+            # Mostra o layout principal
             self._render_main_layout()
 
-        # Handle notifications
+        # Modais de interface
+        if get_state("show_settings"):
+            self._render_settings_modal()
+
+        if get_state("show_export"):
+            self._render_export_dialog()
+            set_state("show_export", False)
+
+        # Notificações do sistema
         self._handle_notifications()
 
-    def _render_sidebar(self) -> None:
-        """Render the main sidebar."""
-        import time
+    def _render_header(self) -> None:
+        """Topbar com nome da análise editável e ações."""
+        current_analysis = self.analysis_service.get_current_analysis()
 
-        cache_age = (
-            time.time() - st.session_state.dashboards_cache_time
-            if st.session_state.dashboards_cache_time
-            else float("inf")
-        )
+        col_name, col_save, col_export = st.columns([5, 1, 1])
 
-        # Refresh cache if older than 30 seconds or not set
-        if st.session_state.dashboards_cache is None or cache_age > 30:
-            st.session_state.dashboards_cache = (
-                self.dashboard_service.get_user_dashboards()
-            )
-            st.session_state.dashboards_cache_time = time.time()
+        with col_name:
+            if current_analysis:
+                new_name = st.text_input(
+                    "nome",
+                    value=current_analysis.name,
+                    label_visibility="collapsed",
+                    key="analysis_name_input",
+                    placeholder="Nome da análise…",
+                )
+                if new_name != current_analysis.name:
+                    self.analysis_service.rename_analysis(current_analysis.id, new_name)
+                    st.rerun()
+            else:
+                st.markdown(
+                    "<span style='font-size:1.1rem;font-weight:700;color:#1E293B;'>"
+                    "📊 Smart BI</span>",
+                    unsafe_allow_html=True,
+                )
 
-        dashboards = st.session_state.dashboards_cache
-        current_id = (
-            st.session_state.current_dashboard.dashboard_id
-            if st.session_state.current_dashboard
-            else None
-        )
+        with col_save:
+            if current_analysis:
+                if st.button("💾 Salvar", width='stretch'):
+                    self.analysis_service.save_current_analysis()
+                    st.toast("Análise salva!", icon="✅")
 
-        selected_id = render_main_sidebar(
-            user_id=st.session_state.user.user_id,
-            dashboards=dashboards,
-            current_dashboard_id=current_id,
-            on_new_dashboard=self._on_new_dashboard,
-            on_select_dashboard=self._on_select_dashboard,
-            on_delete_dashboard=self._on_delete_dashboard,
-            on_settings_click=lambda: setattr(st.session_state, "show_settings", True),
-            on_logout=self._on_logout,
-        )
-
-        if selected_id:
-            self._on_select_dashboard(selected_id)
-
-    def _render_main_layout(self) -> None:
-        """Render the main content layout with dual sidebar."""
-        dashboard = st.session_state.current_dashboard
-
-        # Header bar
-        render_header_bar(
-            analysis_name=dashboard.title,
-            on_save=self._on_save,
-            on_export=lambda: setattr(st.session_state, "show_export", True),
-            on_rename=self._on_rename,
-        )
+        with col_export:
+            if current_analysis:
+                if st.button("📤 Exportar", type="primary", width='stretch'):
+                    set_state("show_export", True)
+                    st.rerun()
 
         st.markdown(
             "<hr style='border:none;border-top:1px solid #E2E8F0;margin:8px 0 16px;'/>",
             unsafe_allow_html=True,
         )
 
-        # Main content with widget palette
-        main_col, widget_col = st.columns([4, 1])
+    def _render_main_layout(self) -> None:
+        """Render the main application layout."""
+        current_analysis = self.analysis_service.get_current_analysis()
+        if not current_analysis:
+            return
 
-        # Get current sheet
-        current_sheet = self._get_current_sheet()
+        current_slide = self.analysis_service.get_current_slide()
 
-        with widget_col:
-            render_widget_palette(
-                sheet=current_sheet,
-                on_add_visualization=self._on_add_visualization,
-            )
+        col_main, col_widgets = st.columns([3, 1])
 
-        with main_col:
-            sheet_id = st.session_state.current_sheet_id
-            if not sheet_id and dashboard.visualizations:
-                sheet_id = dashboard.visualizations[0].sheet_id
-                st.session_state.current_sheet_id = sheet_id
+        with col_widgets:
+            self._render_widget_sidebar(current_analysis)
 
+        with col_main:
+            # ── Canvas ───────────────────────────────────────────────────────
             render_canvas(
-                visualizations=dashboard.visualizations,
+                slide=current_slide,
                 data_service=self.data_service,
-                sheet_id=sheet_id or "",
+                analysis_id=current_analysis.id,
                 on_update_visualization=self._on_update_visualization,
                 on_delete_visualization=self._on_delete_visualization,
                 on_add_comment=self._on_add_comment,
-                sheet=current_sheet,
-                dashboard_id=dashboard.dashboard_id,
+                analysis=current_analysis,
                 on_update_measures=self._on_update_measures,
             )
 
-        # Column mapping dialog (quick-add flow from widget palette button)
-        if st.session_state.show_column_mapping and st.session_state.new_viz_type:
-            self._render_column_mapping_dialog()
-
-        # Edit-viz dialog (triggered by ✏️ button on a card)
-        editing_id = st.session_state.get("editing_viz_id")
-        if editing_id and current_sheet:
-            viz = dashboard.get_visualization(editing_id)
-            if viz:
-                def _on_save_config(cfg):
-                    self._on_update_visualization(editing_id, cfg)
-                    st.session_state.editing_viz_id = None
-                    st.rerun()
-                def _on_cancel_config():
-                    st.session_state.editing_viz_id = None
-                    st.rerun()
-                render_viz_config_dialog(
-                    viz_type=viz.viz_type,
-                    sheet=current_sheet,
-                    existing_config=viz.config,
-                    on_save=_on_save_config,
-                    on_cancel=_on_cancel_config,
-                    is_new=False,
+            # ── Slide navigator ───────────────────────────────────────────────
+            if current_analysis.slides:
+                render_slide_navigator(
+                    slides=current_analysis.slides,
+                    current_slide_id=current_slide.id if current_slide else None,
+                    on_slide_change=self._on_slide_change,
+                    on_add_slide=self._on_add_slide,
+                    on_delete_slide=self._on_delete_slide,
                 )
 
-    def _render_uploader_dialog(self) -> None:
-        """Render the file uploader dialog."""
-        render_file_uploader(
-            on_upload=self._process_uploaded_file,
-            on_cancel=lambda: setattr(st.session_state, "show_uploader", False),
+    def _render_mapping_screen(self) -> None:
+        """Tela de Mapeamento de Colunas com design em cards."""
+        st.markdown(
+            "<h2 style='color:#1E293B;font-weight:700;margin-bottom:4px;'>🛠️ Configurar Colunas</h2>"
+            "<p style='color:#64748B;margin-bottom:24px;'>Confirme ou ajuste os tipos detectados automaticamente.</p>",
+            unsafe_allow_html=True,
         )
+        df = get_state("temp_df")
+        schema = get_state("temp_schema")
 
-    def _render_column_mapping_dialog(self) -> None:
-        """Render the column mapping dialog for new visualizations."""
-        sheet = self._get_current_sheet()
-        if not sheet:
-            return
-
-        render_column_mapping(
-            sheet=sheet,
-            viz_type=st.session_state.new_viz_type,
-            on_map=self._on_column_mapped,
-            on_cancel=self._on_column_mapping_cancel,
-        )
-
-    def _render_settings_modal(self) -> None:
-        """Render the settings modal."""
-        render_settings_modal(
-            current_settings={},
-            on_save=self._on_save_settings,
-        )
-
-        if st.button("Fechar", key="close_settings_btn"):
-            st.session_state.show_settings = False
-            st.rerun()
-
-    def _render_export_modal(self) -> None:
-        """Render the export modal with chart images embedded."""
-        dashboard = st.session_state.current_dashboard
-        if not dashboard:
-            return
-
-        # Render charts to PNG for embedding in PDF/HTML
-        chart_images: Dict[str, bytes] = {}
-        df = self.data_service.get_cached_sheet(st.session_state.current_sheet_id or "")
         if df is not None:
-            from presentation.canvas import _VIZ_TYPE_MAP
-            for viz in dashboard.visualizations:
-                if viz.config and viz.viz_type not in ("table", "metric_card", "measures"):
-                    try:
-                        vt = _VIZ_TYPE_MAP.get(viz.viz_type)
-                        if vt:
-                            fig = self.chart_factory.create_chart(df, viz.config, vt)
-                            chart_images[viz.viz_id] = self.chart_factory.export_figure_to_bytes(fig)
-                    except Exception:
-                        pass
+            mapping = render_column_mapper(df, schema=schema)
 
-        render_export_dialog(
-            dashboard=dashboard,
-            export_service=self.export_service,
-            chart_images=chart_images,
-        )
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            if st.button("✓  Validar e continuar", type="primary", width='stretch'):
+                _tipo_map = {
+                    "Numérico": ColumnType.NUMERIC,
+                    "Data/Hora": ColumnType.DATETIME,
+                    "Categoria": ColumnType.CATEGORICAL,
+                    "Texto": ColumnType.TEXT,
+                }
+                tipos_alvo = {k: _tipo_map[v] for k, v in mapping.items() if v in _tipo_map}
+                df_final = self.data_service.validate_and_cast_types(df, tipos_alvo)
 
-        if st.button("Fechar", key="close_export_btn"):
-            st.session_state.show_export = False
-            st.rerun()
+                # Criar análise e gerar schema a partir do DataFrame já tipado
+                name = get_state("pending_upload_name")
+                analysis = self.analysis_service.create_analysis(name)
 
-    def _handle_notifications(self) -> None:
-        """Handle and display notifications."""
-        notification = st.session_state.notification
-        if notification:
-            message, level = notification
-            if level == "success":
-                st.success(message)
-            elif level == "error":
-                st.error(message)
-            elif level == "warning":
-                st.warning(message)
-            else:
-                st.info(message)
-            st.session_state.notification = None
+                from domain.entities import DataSchema
+                analysis.data_schema = DataSchema.from_polars(df_final)
 
-    # ── Callback methods ──────────────────────────────────────────────────────
+                # Salvar dados no cache e persistir a análise com o novo schema
+                self.data_service.store_data(analysis.id, df_final)
+                self.analysis_service.save_current_analysis()
 
-    def _on_new_dashboard(self) -> None:
-        """Handle new dashboard button click."""
-        st.session_state.show_uploader = True
+                # Limpeza de estado e retorno ao Dashboard
+                set_state("show_column_mapper", False)
+                set_state("temp_df", None)
+                set_state("temp_schema", None)
+                st.success("Dados validados! Os gráficos foram liberados.")
+                st.rerun()
 
-    def _on_select_dashboard(self, dashboard_id: str) -> None:
-        """Handle selection of an existing dashboard."""
-        dashboard = self.dashboard_service.get_dashboard(dashboard_id)
-        if dashboard:
-            st.session_state.current_dashboard = dashboard
-
-            # Set current_sheet_id from visualizations
-            if dashboard.visualizations:
-                st.session_state.current_sheet_id = dashboard.visualizations[0].sheet_id
-
-            # Load file data from S3 if available
-            if dashboard.file:
-                file_entity = dashboard.file
-                sheet_id = st.session_state.current_sheet_id
-
-                # Check if data is already cached
-                if sheet_id and self.data_service.get_cached_sheet(sheet_id) is None:
-                    # Find the sheet entity to get sheet_name
-                    sheet = self.file_service.get_sheet(sheet_id)
-
-                    if sheet and file_entity.storage_path:
-                        # Load data from S3
-                        loaded_sheet, df = self.data_service.load_file_from_s3(
-                            storage_path=file_entity.storage_path,
-                            file_id=file_entity.file_id,
-                            sheet_name=sheet.sheet_name if sheet else None,
-                            existing_sheet=sheet,
-                        )
-
-                        if loaded_sheet and df is not None:
-                            logger.info(f"Loaded data from S3 for sheet {sheet_id}")
-
-                # Set current_file for widget palette to work
-                st.session_state.current_file = file_entity
-
-            st.rerun()
-
-    def _on_delete_dashboard(self, dashboard_id: str) -> None:
-        """
-        Delete a dashboard. Visualizations cascade-delete via SQLAlchemy,
-        but the file (and its sheets, columns, S3 object) are owned
-        independently — so we explicitly drop any file that no other
-        dashboard still references.
-        """
-        # Resolve files referenced by this dashboard's visualizations BEFORE
-        # the dashboard is deleted, otherwise the join is gone.
-        dashboard = self.dashboard_service.get_dashboard(dashboard_id)
-        candidate_file_ids: set = set()
-        if dashboard:
-            for viz in dashboard.visualizations:
-                sheet = self.file_service.get_sheet(viz.sheet_id)
-                if sheet and sheet.file_id:
-                    candidate_file_ids.add(sheet.file_id)
-
-        if not self.dashboard_service.delete_dashboard(dashboard_id):
-            st.session_state.notification = ("Falha ao excluir dashboard", "error")
-            st.rerun()
-            return
-
-        # Drop S3 + DB rows for files no other dashboard uses any more.
-        for file_id in candidate_file_ids:
-            if not self.dashboard_service.is_file_used_by_any_dashboard(file_id):
-                self.file_service.delete_file(file_id)
-
-        st.session_state.dashboards_cache = None
-        st.session_state.dashboards_cache_time = None
-        if (
-            st.session_state.current_dashboard
-            and st.session_state.current_dashboard.dashboard_id == dashboard_id
-        ):
-            st.session_state.current_dashboard = None
-            st.session_state.current_sheet_id = None
-            st.session_state.current_file = None
-        st.rerun()
-
-    def _on_logout(self) -> None:
-        """Handle user logout."""
-        st.session_state.user = None
-        st.session_state.current_dashboard = None
-        st.session_state.current_sheet_id = None
-        st.rerun()
-
-    def _on_save(self) -> None:
-        """Handle save action."""
-        if st.session_state.current_dashboard:
-            self.dashboard_service.save_dashboard(st.session_state.current_dashboard)
-            st.session_state.notification = ("Dashboard salvo!", "success")
-
-    def _on_rename(self, new_name: str) -> None:
-        """Handle dashboard rename."""
-        if st.session_state.current_dashboard:
-            self.dashboard_service.update_dashboard_title(
-                st.session_state.current_dashboard.dashboard_id, new_name
-            )
-            st.session_state.current_dashboard.title = new_name
-
-    def _on_save_settings(self, settings: Dict[str, Any]) -> None:
-        """Handle settings save."""
-        pass  # Settings not implemented in new schema
-
-    def _on_add_visualization(self, viz_type: str) -> None:
-        """Handle add visualization button click."""
-        st.session_state.new_viz_type = viz_type
-        st.session_state.show_column_mapping = True
-
-    def _on_column_mapped(self, config: Dict[str, Any]) -> None:
-        """Handle column mapping completion."""
-        dashboard = st.session_state.current_dashboard
-        if not dashboard:
-            return
-
-        sheet_id = st.session_state.current_sheet_id
-        if not sheet_id:
-            return
-
-        viz_config = VisualizationConfig(
-            title=config.get("title", ""),
-            x_column=config.get("x_column"),
-            y_column=config.get("y_column"),
-            color_column=config.get("color_column"),
-            aggregation=config.get("aggregation", "sum"),
-        )
-
-        viz = self.dashboard_service.add_visualization(
-            dashboard_id=dashboard.dashboard_id,
-            sheet_id=sheet_id,
-            viz_type=st.session_state.new_viz_type,
-            config=viz_config,
-        )
-
-        if viz:
-            # Update local state
-            updated_dashboard = self.dashboard_service.get_dashboard(
-                dashboard.dashboard_id
-            )
-            if updated_dashboard:
-                st.session_state.current_dashboard = updated_dashboard
-
-        st.session_state.show_column_mapping = False
-        st.session_state.new_viz_type = None
-        st.rerun()
-
-    def _on_column_mapping_cancel(self) -> None:
-        """Handle column mapping cancellation."""
-        st.session_state.show_column_mapping = False
-        st.session_state.new_viz_type = None
-        st.rerun()
-
-    def _on_update_visualization(
-        self, viz_id: str, config: VisualizationConfig
-    ) -> None:
-        """Handle visualization update."""
-        dashboard = st.session_state.current_dashboard
-        if not dashboard:
-            return
-
-        self.dashboard_service.update_visualization(
-            viz_id=viz_id,
-            config=config,
-        )
-
-        # Update local state
-        updated_dashboard = self.dashboard_service.get_dashboard(dashboard.dashboard_id)
-        if updated_dashboard:
-            st.session_state.current_dashboard = updated_dashboard
-
-    def _on_delete_visualization(self, viz_id: str) -> None:
-        """Handle visualization deletion."""
-        dashboard = st.session_state.current_dashboard
-        if not dashboard:
-            return
-
-        self.dashboard_service.delete_visualization(viz_id)
-
-        # Update local state
-        updated_dashboard = self.dashboard_service.get_dashboard(dashboard.dashboard_id)
-        if updated_dashboard:
-            st.session_state.current_dashboard = updated_dashboard
-        st.rerun()
-
-    def _on_add_comment(self, viz_id: str, comment: str) -> None:
-        """Handle comment addition."""
-        dashboard = st.session_state.current_dashboard
-        if not dashboard:
-            return
-
-        viz = dashboard.get_visualization(viz_id)
-        if viz:
-            viz.comment = comment
-
-    def _on_update_measures(self, measures: list) -> None:
-        """Persist measures list in session_state (in-memory only)."""
-        dashboard = st.session_state.current_dashboard
-        if dashboard:
-            key = f"measures_{dashboard.dashboard_id}"
-            st.session_state[key] = measures
-
-    def _process_uploaded_file(self, uploaded_file: Any) -> None:
-        """
-        Stage one of upload: parse the file in-memory, detect column types,
-        and route the user to the column-type editor screen. Nothing is
-        persisted to S3 or Postgres until the user confirms.
-        """
-        try:
-            file_bytes = uploaded_file.getvalue()
-            sheet, df = self.data_service.load_excel_from_bytes(
-                file_bytes=file_bytes,
-                file_name=uploaded_file.name,
-                file_id="pending",
-            )
-
-            if sheet is None or df is None:
-                st.error("Falha ao ler arquivo")
-                return
-
-            st.session_state.pending_upload = {
-                "file_bytes": file_bytes,
-                "filename": uploaded_file.name,
-                "sheet": sheet,
-                "df": df,
-            }
-            st.session_state.show_uploader = False
-            st.session_state.show_column_type_editor = True
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Erro ao ler arquivo: {str(e)}")
-
-    def _render_column_type_editor_screen(self) -> None:
-        """Show the post-upload column-type editor."""
-        pending = st.session_state.pending_upload
-        if not pending:
-            st.session_state.show_column_type_editor = False
-            st.rerun()
+    def _render_widget_sidebar(self, current_analysis) -> None:
+        """Painel direito com palette vertical de visuais + preview de dados."""
+        if not current_analysis or not current_analysis.data_schema:
             return
 
         st.markdown(
-            "<h2 style='color:#1E293B;font-weight:700;margin-bottom:4px;'>"
-            "🛠️ Configurar Colunas</h2>"
-            "<p style='color:#64748B;margin-bottom:24px;'>"
-            f"Arquivo <b>{pending['filename']}</b> — "
-            "confirme ou ajuste o tipo detectado para cada coluna.</p>",
+            "<div style='font-size:.70rem;font-weight:600;letter-spacing:.08em;"
+            "color:#B0ABA4;text-transform:uppercase;margin-bottom:10px;'>Adicionar visual</div>",
             unsafe_allow_html=True,
         )
 
-        mapping = render_column_mapper(pending["sheet"], df=pending["df"])
+        from presentation.widgets import render_widget_palette
+        render_widget_palette(
+            current_analysis.data_schema, self._start_visualization_config
+        )
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            confirm = st.button(
-                "✓ Validar e criar dashboard",
-                type="primary",
-                use_container_width=True,
+
+        df = self.data_service.get_cached_data(current_analysis.id)
+        if df is not None:
+            with st.expander("📋 Dados", expanded=False):
+                render_data_preview(current_analysis.data_schema, df)
+
+        # Modais de config (abrem sobre o canvas via @st.dialog)
+        if get_state("configuring_new_viz"):
+            self._render_config_dialog()
+
+        if get_state("editing_viz_id"):
+            self._render_edit_config_dialog()
+
+    def _render_uploader_dialog(self) -> None:
+        """Render file uploader dialog."""
+        if get_state("show_uploader"):
+            with st.expander("📂 Upload XLSX File", expanded=True):
+                uploaded_file = st.file_uploader(
+                    "Select an Excel file",
+                    type=["xlsx", "xls"],
+                    help="Upload an Excel file to start a new analysis",
+                )
+
+                if uploaded_file is not None:
+                    name_input = st.text_input(
+                        "Analysis Name", value=uploaded_file.name.rsplit(".", 1)[0]
+                    )
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(
+                            "📁 Load File", type="primary", width='stretch'
+                        ):
+                            self._process_uploaded_file(uploaded_file, name_input)
+
+                    with col2:
+                        if st.button("✗ Cancel", width='stretch'):
+                            set_state("show_uploader", False)
+                            st.rerun()
+
+    def _render_settings_modal(self) -> None:
+        """Render settings modal."""
+        with st.expander("⚙️ Settings", expanded=True):
+            render_settings_modal(
+                current_settings=self.analysis_service.get_settings(),
+                on_save=self._on_save_settings,
             )
-        with col2:
-            cancel = st.button("✗ Cancelar", use_container_width=True)
+            if st.button("Close Settings"):
+                set_state("show_settings", False)
+                st.rerun()
 
-        if cancel:
-            st.session_state.pending_upload = None
-            st.session_state.show_column_type_editor = False
+    def _render_export_dialog(self) -> None:
+        """Abre o modal @st.dialog de exportação para PDF."""
+        current_analysis = self.analysis_service.get_current_analysis()
+        if current_analysis:
+            render_export_dialog(
+                analysis=current_analysis,
+                on_export=self._on_export,
+            )
+
+    def _handle_notifications(self) -> None:
+        """Exibe notificações via st.toast e limpa o estado."""
+        notification = get_state("notification")
+        if notification:
+            message, level = notification
+            icon_map = {"success": "✅", "error": "❌", "warning": "⚠️", "info": "ℹ️"}
+            st.toast(message, icon=icon_map.get(level, "ℹ️"))
+            set_state("notification", None)
+
+    # Callback methods
+
+    def _on_new_analysis(self) -> None:
+        """Handle new analysis creation."""
+        set_state("show_uploader", True)
+
+    def _process_uploaded_file(self, uploaded_file, name: str) -> None:
+        try: # <--- O try começa aqui
+            file_bytes = uploaded_file.getvalue()
+            schema, df = self.data_service.load_excel_from_bytes(
+                file_bytes, uploaded_file.name, "temp_id"
+            )
+
+            set_state("temp_df", df)
+            set_state("temp_schema", schema)
+            set_state("show_column_mapper", True)
+            set_state("pending_upload_name", name)
+            set_state("pending_file_name", uploaded_file.name)
+
             st.rerun()
-        elif confirm:
-            self._confirm_column_mapping(mapping)
+        except Exception as e: # <--- O except deve estar alinhado com o try
+            st.error(f"Erro ao processar arquivo: {str(e)}")
 
-    def _confirm_column_mapping(self, mapping: Dict[str, str]) -> None:
-        """
-        Stage two of upload: apply the user-confirmed type mapping, upload
-        the file to S3, persist file/sheet/columns/dashboard to Postgres,
-        and seed the dashboard with a default table viz.
-        """
-        pending = st.session_state.pending_upload
-        if not pending:
+    def _on_select_analysis(self, analysis_id: str) -> None:
+        """Handle analysis selection."""
+        self.analysis_service.set_current_analysis(analysis_id)
+        st.rerun()
+
+    def _on_save_settings(self, settings: Dict[str, Any]) -> None:
+        """Handle settings save."""
+        self.analysis_service.update_settings(settings)
+
+    def _start_visualization_config(self, viz_type: VisualizationType) -> None:
+        """Start configuration for a new visualization."""
+        set_state("configuring_new_viz", viz_type)
+
+    def _render_config_dialog(self) -> None:
+        """Abre o modal @st.dialog para criar uma NOVA visualização."""
+        viz_type = get_state("configuring_new_viz")
+        current_analysis = self.analysis_service.get_current_analysis()
+
+        if not viz_type or not current_analysis or not current_analysis.data_schema:
             return
 
-        try:
-            df_typed = self.data_service.cast_column_types(pending["df"], mapping)
-
-            # Apply the user's choices to the in-memory sheet so file_service
-            # persists the right data_types when it saves the new file rows.
-            for col in pending["sheet"].columns:
-                if col.column_name in mapping:
-                    col.data_type = mapping[col.column_name]
-
-            file_entity = self.file_service.upload_file(
-                file_data=pending["file_bytes"],
-                filename=pending["filename"],
-                user_id=st.session_state.user.user_id,
+        # MEASURES não precisa de dialog — cria direto
+        if viz_type == VisualizationType.MEASURES:
+            config = VisualizationConfig(
+                visualization_type=VisualizationType.MEASURES,
+                title="Medidas Calculadas",
             )
+            self._create_visualization_with_config(viz_type, config)
+            return
 
-            if not file_entity:
-                st.error("Falha ao carregar arquivo")
-                return
+        from presentation.widgets import render_visualization_config_dialog
 
-            # Override DB-side detected types with the user's choices
-            if file_entity.sheets:
-                first_sheet = file_entity.sheets[0]
-                for col in first_sheet.columns:
-                    if col.column_name in mapping:
-                        col.data_type = mapping[col.column_name]
-                self.file_service._file_repo.save_file(file_entity)
-            else:
-                st.error("Falha ao extrair planilhas do arquivo")
-                return
-
-            name = pending["filename"].rsplit(".", 1)[0]
-            dashboard = self.dashboard_service.create_dashboard(
-                title=name,
-                file_id=file_entity.file_id,
-            )
-            if not dashboard:
-                st.error("Falha ao criar dashboard")
-                return
-
-            # Cache typed dataframe under the canonical sheet_id from the DB
-            self.data_service.set_cached_sheet(first_sheet.sheet_id, df_typed)
-            self.data_service.set_cached_data(file_entity.file_id, df_typed)
-
-            st.session_state.current_sheet_id = first_sheet.sheet_id
-            st.session_state.current_file = file_entity
-
-            self.dashboard_service.add_visualization(
-                dashboard_id=dashboard.dashboard_id,
-                sheet_id=first_sheet.sheet_id,
-                viz_type="table",
-                config=VisualizationConfig(title="Data Preview"),
-            )
-
-            st.session_state.current_dashboard = self.dashboard_service.get_dashboard(
-                dashboard.dashboard_id
-            )
-            st.session_state.dashboards_cache = None
-            st.session_state.dashboards_cache_time = None
-            st.session_state.pending_upload = None
-            st.session_state.show_column_type_editor = False
-            st.success(
-                f"✓ Carregado {len(df_typed)} linhas de {pending['filename']}"
-            )
+        def on_save(config):
+            self._create_visualization_with_config(viz_type, config)
+            set_state("configuring_new_viz", None)
             st.rerun()
 
-        except Exception as e:
-            st.error(f"Erro ao confirmar mapeamento: {str(e)}")
+        def on_cancel():
+            set_state("configuring_new_viz", None)
+            st.rerun()
 
-    def _get_current_sheet(self) -> Optional[FileSheet]:
-        """Get the current sheet being edited."""
-        if st.session_state.current_file:
-            file = st.session_state.current_file
-            if file.sheets:
-                sheet_id = st.session_state.current_sheet_id
-                if sheet_id:
-                    for sheet in file.sheets:
-                        if sheet.sheet_id == sheet_id:
-                            return sheet
-                return file.sheets[0]
-        return None
+        render_visualization_config_dialog(
+            viz_type=viz_type,
+            data_schema=self._get_effective_schema(current_analysis),
+            on_save=on_save,
+            on_cancel=on_cancel,
+            is_new=True,
+        )
 
-    # ── dev-03 methods (analysis-based features) ──────────────────────────────
+    def _render_edit_config_dialog(self) -> None:
+        """Abre o modal @st.dialog para editar uma visualização existente."""
+        viz_id = get_state("editing_viz_id")
+        slide_id = get_state("editing_slide_id")
+
+        if not viz_id:
+            return
+
+        current_analysis = self.analysis_service.get_current_analysis()
+        if not current_analysis or not current_analysis.data_schema:
+            return
+
+        viz = None
+        for slide in current_analysis.slides:
+            for v in slide.visualizations:
+                if v.id == viz_id:
+                    viz = v
+                    break
+
+        if not viz or not viz.config:
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            return
+
+        from presentation.widgets import render_visualization_config_dialog
+
+        def on_save(new_config):
+            self.analysis_service.update_visualization(
+                slide_id, viz_id, config=new_config
+            )
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            self.analysis_service.save_current_analysis()
+            st.toast("✓ Visualização atualizada!")
+            st.rerun()
+
+        def on_cancel():
+            set_state("editing_viz_id", None)
+            set_state("editing_slide_id", None)
+            st.rerun()
+
+        render_visualization_config_dialog(
+            viz_type=viz.config.visualization_type,
+            data_schema=self._get_effective_schema(current_analysis),
+            existing_config=viz.config,
+            on_save=on_save,
+            on_cancel=on_cancel,
+            is_new=False,
+        )
+
+    def _create_visualization_with_config(
+        self, viz_type: VisualizationType, config: VisualizationConfig
+    ) -> None:
+        """Create a visualization with the specified configuration."""
+        current_slide = self.analysis_service.get_current_slide()
+        current_analysis = self.analysis_service.get_current_analysis()
+
+        if not current_slide or not current_analysis:
+            return
+
+        # Add visualization with the config
+        viz = self.analysis_service.add_visualization(current_slide.id, config)
+
+        if viz:
+            # Store data snapshot for tables
+            df = self.data_service.get_cached_data(current_analysis.id)
+            if df is not None and viz_type == VisualizationType.TABLE:
+                all_cols = current_analysis.data_schema.get_column_names()
+                data = df.head(100).to_pandas().to_dict(orient="records")
+                viz.data_snapshot = {"data": data, "columns": all_cols[:10]}
+
+            self.analysis_service.save_current_analysis()
+
+        # Clear config state
+        set_state("configuring_new_viz", None)
+        st.success(f"✓ Added {viz_type.value.replace('_', ' ').title()}")
+        st.rerun()
+
+    def _cancel_config(self) -> None:
+        """Cancel the configuration dialog."""
+        set_state("configuring_new_viz", None)
+        set_state("editing_viz_id", None)
+        set_state("editing_slide_id", None)
+        st.rerun()
+
+    def _on_add_visualization(self, viz_type: VisualizationType) -> None:
+        """Start adding a new visualization - shows config dialog."""
+        set_state("configuring_new_viz", viz_type)
+
+    def _on_update_visualization(
+        self, slide_id: str, viz_id: str, config: VisualizationConfig
+    ) -> None:
+        """Handle visualization update."""
+        self.analysis_service.update_visualization(slide_id, viz_id, config=config)
+
+    def _on_delete_visualization(self, slide_id: str, viz_id: str) -> None:
+        """Handle visualization deletion."""
+        self.analysis_service.delete_visualization(slide_id, viz_id)
+        st.success("Visualization deleted")
+        st.rerun()
+
+    def _on_add_comment(self, slide_id: str, viz_id: str, comment: str) -> None:
+        """Handle adding a comment."""
+        self.analysis_service.update_visualization(slide_id, viz_id, comment=comment)
+
+    def _on_update_measures(self, measures: list) -> None:
+        """Atualiza as medidas calculadas da análise corrente e salva."""
+        current_analysis = self.analysis_service.get_current_analysis()
+        if current_analysis:
+            current_analysis.measures = measures
+            self.analysis_service.save_current_analysis()
+
+    def _get_effective_schema(self, analysis):
+        """Retorna o DataSchema da análise enriquecido com as medidas como colunas NUMERIC."""
+        schema = analysis.data_schema
+        if not schema:
+            return schema
+        measures = getattr(analysis, "measures", None) or []
+        if not measures:
+            return schema
+        existing_names = {c.name for c in schema.columns}
+        extra = []
+        for m in measures:
+            name = (m.get("name") or "").strip()
+            if name and name not in existing_names:
+                from domain.entities import Column
+                extra.append(Column(name=name, data_type=ColumnType.NUMERIC))
+        if not extra:
+            return schema
+        from domain.entities import DataSchema
+        return DataSchema(
+            columns=list(schema.columns) + extra,
+            row_count=schema.row_count,
+            file_name=schema.file_name,
+            file_size=schema.file_size,
+        )
+
+    def _on_slide_change(self, slide_id: str) -> None:
+        """Handle slide change."""
+        self.analysis_service.set_current_slide(slide_id)
+
+    def _on_add_slide(self) -> None:
+        """Handle adding a new slide."""
+        slide = self.analysis_service.add_slide()
+        if slide:
+            st.success(f"Added {slide.title}")
+            st.rerun()
+
+    def _on_delete_slide(self, slide_id: str) -> None:
+        """Handle slide deletion."""
+        self.analysis_service.delete_slide(slide_id)
+        st.success("Slide deleted")
+        st.rerun()
 
     def _apply_filters_to_df(self, df: pl.DataFrame, viz_id: str) -> pl.DataFrame:
         """Aplica os filtros salvos em session_state para a visualização ao df."""
@@ -1030,15 +908,11 @@ class SmartXLApp:
 
                 def _cast(v):
                     if dtype in (pl.Float64, pl.Float32):
-                        try:
-                            return float(v)
-                        except Exception:
-                            return v
+                        try: return float(v)
+                        except: return v
                     if dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32):
-                        try:
-                            return int(float(v))
-                        except Exception:
-                            return v
+                        try: return int(float(v))
+                        except: return v
                     return v
 
                 if op == "is_null":
@@ -1176,48 +1050,10 @@ class SmartXLApp:
             st.error(f"Erro na exportação: {str(e)}")
             return None
 
-    def _get_effective_schema(self, analysis):
-        """Retorna o DataSchema da análise enriquecido com as medidas como colunas NUMERIC."""
-        schema = analysis.data_schema
-        if not schema:
-            return schema
-        measures = getattr(analysis, "measures", None) or []
-        if not measures:
-            return schema
-        existing_names = {c.name for c in schema.columns}
-        extra = []
-        for m in measures:
-            name = (m.get("name") or "").strip()
-            if name and name not in existing_names:
-                from domain.entities import Column
-                extra.append(Column(name=name, data_type=ColumnType.NUMERIC))
-        if not extra:
-            return schema
-        from domain.entities import DataSchema
-        return DataSchema(
-            columns=list(schema.columns) + extra,
-            row_count=schema.row_count,
-            file_name=schema.file_name,
-            file_size=schema.file_size,
-        )
-
-    def _on_slide_change(self, slide_id: str) -> None:
-        """Handle slide change — stored in session_state for canvas to pick up."""
-        st.session_state["current_slide_id"] = slide_id
-        st.rerun()
-
-    def _on_add_slide(self) -> None:
-        """Handle adding a new slide."""
-        pass  # Implemented through analysis_service when available
-
-    def _on_delete_slide(self, slide_id: str) -> None:
-        """Handle slide deletion."""
-        pass  # Implemented through analysis_service when available
-
 
 def main():
-    """Application entry point."""
-    app = SmartXLApp()
+    """Main entry point."""
+    app = DashboardBuilderApp()
     app.run()
 
 

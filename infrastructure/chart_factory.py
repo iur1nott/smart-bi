@@ -1,39 +1,34 @@
 """
-Chart Factory - Creates Plotly charts from visualization configurations.
-Provides a unified interface for all chart types with Polars DataFrame support.
+Chart Factory - Creates visualization charts using Plotly.
+Follows Factory Pattern for creating different chart types.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, Any, Optional, List
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from domain.entities import VisualizationConfig, VisualizationType
-from domain.value_objects import ChartColors
-
-# Plotly color-sequence presets mapped to our scheme names
-_COLOR_SEQUENCES: Dict[str, List[str]] = {
-    "default": px.colors.qualitative.Plotly,
-    "pastel":  px.colors.qualitative.Pastel,
-    "dark":    px.colors.qualitative.Dark24,
-    "vivid":   px.colors.qualitative.Vivid,
-    "safe":    px.colors.qualitative.Safe,
-    "d3":      px.colors.qualitative.D3,
-    "set1":    px.colors.qualitative.Set1,
-    "set2":    px.colors.qualitative.Set2,
-}
+from domain.entities import VisualizationType, VisualizationConfig
 
 
 class ChartFactory:
     """Factory class for creating different types of charts using Plotly."""
 
-    COLOR_SCHEMES: Dict[str, list] = _COLOR_SEQUENCES
+    COLOR_SCHEMES: Dict[str, list] = {
+        "default": px.colors.qualitative.Plotly,
+        "pastel":  px.colors.qualitative.Pastel,
+        "dark":    px.colors.qualitative.Dark24,
+        "vivid":   px.colors.qualitative.Vivid,
+        "safe":    px.colors.qualitative.Safe,
+        "d3":      px.colors.qualitative.D3,
+        "set1":    px.colors.qualitative.Set1,
+        "set2":    px.colors.qualitative.Set2,
+    }
 
     def __init__(self, default_height: int = 400, default_width: int = 600):
         self.default_height = default_height
         self.default_width = default_width
-        self.colors = ChartColors()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public API
@@ -43,32 +38,12 @@ class ChartFactory:
         self,
         df: pl.DataFrame,
         config: VisualizationConfig,
-        viz_type: Optional[VisualizationType] = None,
         sort_by: str = "none",
     ) -> go.Figure:
-        """
-        Create a Plotly figure based on VisualizationConfig.
+        """Create a Plotly figure based on VisualizationConfig."""
+        vtype = config.visualization_type
 
-        If viz_type is provided (legacy call from merge code), it takes priority.
-        Otherwise, config.visualization_type is used.
-        """
-        # Determine effective visualization type
-        vtype = viz_type or config.visualization_type
-
-        if vtype is None:
-            return self._create_empty_figure("Tipo de visualização não especificado")
-
-        # Map legacy merge types to dev-03 types where needed
-        _LEGACY_MAP = {
-            VisualizationType.BAR:       VisualizationType.COLUMN_CHART,
-            VisualizationType.LINE:      VisualizationType.LINE_CHART,
-            VisualizationType.PIE:       VisualizationType.PIE_CHART,
-            VisualizationType.AREA:      VisualizationType.AREA_CHART,
-            VisualizationType.SCATTER:   VisualizationType.SCATTER_PLOT,
-            VisualizationType.BOX:       VisualizationType.BOX_PLOT,
-        }
-        vtype = _LEGACY_MAP.get(vtype, vtype)
-
+        # Tipos que suportam ordenação pelo usuário
         if vtype == VisualizationType.COLUMN_CHART:
             fig = self._create_column_chart(df, config, sort_by)
         elif vtype == VisualizationType.BAR_CHART:
@@ -85,8 +60,6 @@ class ChartFactory:
             fig = self._create_histogram(df, config)
         elif vtype == VisualizationType.BOX_PLOT:
             fig = self._create_box_plot(df, config)
-        elif vtype == VisualizationType.HEATMAP:
-            fig = self._create_heatmap(df, config)
         else:
             fig = self._create_empty_figure(
                 f"Tipo '{vtype.value}' não implementado"
@@ -138,7 +111,7 @@ class ChartFactory:
             return s[:max_len] + "…" if len(s) > max_len else s
 
         vtype = config.visualization_type
-        title = config.title or (vtype.value.replace("_", " ").title() if vtype else "")
+        title = config.title or vtype.value.replace("_", " ").title()
         agg = config.aggregation or "sum"
 
         img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
@@ -151,12 +124,12 @@ class ChartFactory:
         except Exception:
             font_sm = font_md = font_bold = ImageFont.load_default()
 
-        cx0 = ML
-        cy0 = MT
-        cw  = W - ML - MR
-        ch  = H - MT - MB
-        cx1 = cx0 + cw
-        cy1 = cy0 + ch
+        cx0 = ML          # chart area left
+        cy0 = MT          # chart area top
+        cw  = W - ML - MR # chart area width
+        ch  = H - MT - MB # chart area height
+        cx1 = cx0 + cw    # chart area right
+        cy1 = cy0 + ch    # chart area bottom  (pixels grow downward)
 
         GRAY_AXIS  = (203, 213, 225)
         GRAY_GRID  = (226, 232, 240)
@@ -180,8 +153,8 @@ class ChartFactory:
             return cy1 - (v - min_v) / rng * ch
 
         try:
-            if vtype in (VisualizationType.COLUMN_CHART, VisualizationType.BAR_CHART,
-                         VisualizationType.BAR):
+            # ── Coluna / Barra ───────────────────────────────────────────────
+            if vtype in (VisualizationType.COLUMN_CHART, VisualizationType.BAR_CHART):
                 x_col = config.x_column
                 y_cols = config.y_columns or ([config.y_column] if config.y_column else [])
                 y_cols = [c for c in y_cols if c and c in df.columns]
@@ -192,7 +165,7 @@ class ChartFactory:
                     all_vals = [v for lst in series.values() for v in lst if v is not None]
                     min_v, max_v = 0, (max(all_vals) * 1.1 if all_vals else 1)
 
-                    if vtype in (VisualizationType.COLUMN_CHART, VisualizationType.BAR):
+                    if vtype == VisualizationType.COLUMN_CHART:
                         draw_axes()
                         draw_y_grid(min_v, max_v)
                         n_cats  = len(cats)
@@ -211,7 +184,8 @@ class ChartFactory:
                             lbl = fmt_label(cat, 8)
                             lx  = x_base + bar_w * len(y_cols) / 2
                             draw.text((lx, cy1 + 4), lbl, fill=GRAY_LABEL, font=font_sm, anchor="mt")
-                    else:
+
+                    else:  # BAR_CHART horizontal
                         n_cats = len(cats)
                         bar_h  = ch / max(n_cats, 1) * 0.6
                         all_x  = [v for lst in series.values() for v in lst if v is not None]
@@ -231,8 +205,8 @@ class ChartFactory:
                             draw.text((cx0 - 4, y_base + bar_h / 2), lbl,
                                       fill=GRAY_LABEL, font=font_sm, anchor="rm")
 
-            elif vtype in (VisualizationType.LINE_CHART, VisualizationType.AREA_CHART,
-                           VisualizationType.LINE, VisualizationType.AREA):
+            # ── Linha / Área ─────────────────────────────────────────────────
+            elif vtype in (VisualizationType.LINE_CHART, VisualizationType.AREA_CHART):
                 x_col = config.x_column
                 y_col = config.y_column
                 if x_col and y_col and x_col in df.columns and y_col in df.columns:
@@ -247,20 +221,21 @@ class ChartFactory:
                     pts  = [(cx0 + i * step, val_to_y(v, min_v, max_v))
                             for i, v in enumerate(vals)]
                     color_line = palette_color(0)
-                    if vtype in (VisualizationType.AREA_CHART, VisualizationType.AREA) and len(pts) >= 2:
+                    if vtype == VisualizationType.AREA_CHART and len(pts) >= 2:
                         poly = [(cx0, cy1)] + list(pts) + [(pts[-1][0], cy1)]
                         draw.polygon(poly, fill=palette_color(0, 80))
                     if len(pts) >= 2:
                         draw.line(pts, fill=color_line, width=2)
-                    for i, (px_, py_) in enumerate(pts):
+                    for i, (px, py) in enumerate(pts):
                         r = 3
-                        draw.ellipse([(px_ - r, py_ - r), (px_ + r, py_ + r)],
+                        draw.ellipse([(px - r, py - r), (px + r, py + r)],
                                      fill=color_line, outline=(255, 255, 255, 255), width=1)
                         if i % max(1, n // 8) == 0:
-                            draw.text((px_, cy1 + 4), fmt_label(cats[i], 8),
+                            draw.text((px, cy1 + 4), fmt_label(cats[i], 8),
                                       fill=GRAY_LABEL, font=font_sm, anchor="mt")
 
-            elif vtype in (VisualizationType.PIE_CHART, VisualizationType.PIE):
+            # ── Pizza ────────────────────────────────────────────────────────
+            elif vtype == VisualizationType.PIE_CHART:
                 x_col = config.x_column
                 y_col = config.y_column
                 if x_col and y_col and x_col in df.columns and y_col in df.columns:
@@ -282,6 +257,7 @@ class ChartFactory:
                         pct = f"{v / total * 100:.1f}%"
                         draw.text((lx, ly), pct, fill=(51, 65, 85), font=font_sm, anchor="mm")
                         angle += sweep
+                    # legend
                     lx0 = pcx + r + 20
                     for i, lbl in enumerate(labels[:10]):
                         ly0 = pcy - r + i * 18
@@ -290,7 +266,8 @@ class ChartFactory:
                         draw.text((lx0 + 14, ly0 + 5), fmt_label(lbl, 14),
                                   fill=GRAY_LABEL, font=font_sm, anchor="lm")
 
-            elif vtype in (VisualizationType.SCATTER_PLOT, VisualizationType.SCATTER):
+            # ── Dispersão ────────────────────────────────────────────────────
+            elif vtype == VisualizationType.SCATTER_PLOT:
                 x_col, y_col = config.x_column, config.y_column
                 if x_col and y_col and x_col in df.columns and y_col in df.columns:
                     xs = [v for v in df[x_col].to_list() if v is not None]
@@ -309,6 +286,7 @@ class ChartFactory:
                             r = 3
                             draw.ellipse([(px_ - r, py_ - r), (px_ + r, py_ + r)], fill=c)
 
+            # ── Histograma ───────────────────────────────────────────────────
             elif vtype == VisualizationType.HISTOGRAM:
                 x_col = config.x_column
                 if x_col and x_col in df.columns:
@@ -334,7 +312,8 @@ class ChartFactory:
                                 fill=palette_color(0),
                             )
 
-            elif vtype in (VisualizationType.BOX_PLOT, VisualizationType.BOX):
+            # ── Box Plot ─────────────────────────────────────────────────────
+            elif vtype == VisualizationType.BOX_PLOT:
                 y_col = config.y_column
                 x_col = config.x_column
                 if y_col and y_col in df.columns:
@@ -381,6 +360,7 @@ class ChartFactory:
                             draw.text((bx + bw2 / 2, cy1 + 4), fmt_label(gname, 10),
                                       fill=GRAY_LABEL, font=font_sm, anchor="mt")
 
+            # ── Heatmap ──────────────────────────────────────────────────────
             elif vtype == VisualizationType.HEATMAP:
                 x_col  = config.x_column
                 y_col  = config.y_column
@@ -432,6 +412,7 @@ class ChartFactory:
             img = img2
             draw = draw2
 
+        # título
         draw.text((W // 2, 18), title, fill=(30, 41, 59), font=font_bold, anchor="mm")
 
         buf = _io.BytesIO()
@@ -447,23 +428,15 @@ class ChartFactory:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _colors(self, config: VisualizationConfig) -> list:
-        return self.COLOR_SCHEMES.get(
-            getattr(config, "color_scheme", "default") or "default",
-            self.COLOR_SCHEMES["default"]
-        )
-
-    # alias used by older call sites
-    def _palette(self, config: VisualizationConfig) -> List[str]:
-        return self._colors(config)
+        return self.COLOR_SCHEMES.get(config.color_scheme, self.COLOR_SCHEMES["default"])
 
     def _agg_expr(self, col: str, agg: str) -> pl.Expr:
         return {
-            "sum":    pl.col(col).sum(),
-            "mean":   pl.col(col).mean(),
-            "count":  pl.col(col).count(),
-            "min":    pl.col(col).min(),
-            "max":    pl.col(col).max(),
-            "median": pl.col(col).median(),
+            "sum":   pl.col(col).sum(),
+            "mean":  pl.col(col).mean(),
+            "count": pl.col(col).count(),
+            "min":   pl.col(col).min(),
+            "max":   pl.col(col).max(),
         }.get(agg, pl.col(col).sum())
 
     def _aggregate(
@@ -489,6 +462,7 @@ class ChartFactory:
             .agg([self._agg_expr(c, agg) for c in valid_y])
         )
 
+        # Aplicar ordenação
         if sort_by == "x_asc":
             result = result.sort(x_col, descending=False)
         elif sort_by == "x_desc":
@@ -498,55 +472,9 @@ class ChartFactory:
         elif sort_by == "value_desc" and valid_y:
             result = result.sort(valid_y[0], descending=True)
         else:
-            result = result.sort(x_col)
+            result = result.sort(x_col)  # padrão: ordem da categoria
 
         return result
-
-    def _aggregate_single(
-        self, df: pl.DataFrame, config: VisualizationConfig, y_col: str
-    ) -> pl.DataFrame:
-        """Aggregate df by x_column (+ optional color_column) for one y column."""
-        if not config.x_column or not y_col:
-            return df
-        agg_alias = f"_agg_{y_col}"
-        group_cols = [config.x_column]
-        if config.color_column and config.color_column in df.columns and \
-                config.color_column != config.x_column:
-            group_cols.append(config.color_column)
-        result = df.group_by(group_cols).agg(
-            self._agg_expr(y_col, config.aggregation).alias(agg_alias)
-        )
-        if agg_alias != y_col:
-            result = result.rename({agg_alias: y_col})
-        return result
-
-    def _sort(
-        self, df: pl.DataFrame, x_col: Optional[str], y_col: Optional[str],
-        sort_by: str
-    ) -> pl.DataFrame:
-        """Apply sort_by logic to an already-aggregated frame."""
-        if sort_by == "none" or not x_col:
-            return df
-        try:
-            if sort_by == "x_asc":
-                return df.sort(x_col)
-            if sort_by == "x_desc":
-                return df.sort(x_col, descending=True)
-            if sort_by == "value_asc" and y_col and y_col in df.columns:
-                return df.sort(y_col)
-            if sort_by == "value_desc" and y_col and y_col in df.columns:
-                return df.sort(y_col, descending=True)
-        except Exception:
-            pass
-        return df
-
-    def _y_cols_from_config(self, config: VisualizationConfig) -> List[str]:
-        """Return the effective list of Y columns from config."""
-        if config.y_columns:
-            return [c for c in config.y_columns if c]
-        if config.y_column:
-            return [config.y_column]
-        return []
 
     def _fmt_values(self, values: list) -> List[str]:
         """Format a list of values for chart text labels."""
@@ -559,6 +487,14 @@ class ChartFactory:
             else:
                 out.append(str(v))
         return out
+
+    def _y_cols_from_config(self, config: VisualizationConfig) -> List[str]:
+        """Return the effective list of Y columns from config."""
+        if config.y_columns:
+            return [c for c in config.y_columns if c]
+        if config.y_column:
+            return [config.y_column]
+        return []
 
     # ─────────────────────────────────────────────────────────────────────────
     # Chart builders
@@ -579,8 +515,6 @@ class ChartFactory:
         fig = go.Figure()
 
         for i, col in enumerate(y_cols):
-            if col not in df_plot.columns:
-                continue
             values = df_plot[col].to_list()
             fig.add_trace(
                 go.Bar(
@@ -614,8 +548,6 @@ class ChartFactory:
         fig = go.Figure()
 
         for i, col in enumerate(y_cols):
-            if col not in df_plot.columns:
-                continue
             values = df_plot[col].to_list()
             fig.add_trace(
                 go.Bar(
@@ -638,7 +570,7 @@ class ChartFactory:
         return fig
 
     def _create_line_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Line chart with optional aggregation and value labels."""
         x_col = config.x_column
@@ -666,7 +598,7 @@ class ChartFactory:
         return fig
 
     def _create_area_chart(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Area chart with optional aggregation and value labels."""
         x_col = config.x_column
@@ -714,7 +646,7 @@ class ChartFactory:
         return fig
 
     def _create_scatter_plot(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Scatter plot (raw data, no aggregation)."""
         x_col = config.x_column
@@ -740,7 +672,7 @@ class ChartFactory:
         return fig
 
     def _create_histogram(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Histogram (distribution of one column)."""
         x_col = config.x_column
@@ -762,7 +694,7 @@ class ChartFactory:
         return fig
 
     def _create_box_plot(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Box plot (raw data)."""
         y_col = config.y_column
@@ -780,7 +712,7 @@ class ChartFactory:
         return fig
 
     def _create_heatmap(
-        self, df: pl.DataFrame, config: VisualizationConfig, sort_by: str = "none"
+        self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Heatmap with pivot aggregation."""
         x_col = config.x_column
@@ -789,23 +721,20 @@ class ChartFactory:
             return self._create_empty_figure("Selecione colunas X e Y para o heatmap")
 
         value_col = config.color_column or y_col
-        try:
-            pivot_pandas = (
-                df.group_by([x_col, y_col])
-                .agg(self._agg_expr(value_col, config.aggregation).alias("value"))
-                .to_pandas()
-                .pivot(index=y_col, columns=x_col, values="value")
-            )
+        pivot_pandas = (
+            df.group_by([x_col, y_col])
+            .agg(self._agg_expr(value_col, config.aggregation).alias("value"))
+            .to_pandas()
+            .pivot(index=y_col, columns=x_col, values="value")
+        )
 
-            fig = px.imshow(
-                pivot_pandas,
-                color_continuous_scale="Blues",
-                aspect="auto",
-                text_auto=config.show_values,
-            )
-            return fig
-        except Exception:
-            return self._create_empty_figure("Erro ao gerar heatmap")
+        fig = px.imshow(
+            pivot_pandas,
+            color_continuous_scale="Blues",
+            aspect="auto",
+            text_auto=config.show_values,
+        )
+        return fig
 
     # ─────────────────────────────────────────────────────────────────────────
     # Shared utilities
@@ -827,21 +756,25 @@ class ChartFactory:
     def _apply_common_style(
         self, fig: go.Figure, config: VisualizationConfig
     ) -> None:
-        palette = self._colors(config)
         fig.update_layout(
-            title={"text": config.title or "", "x": 0.5, "xanchor": "center"},
+            title=config.title or "",
             height=self.default_height,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font={"family": "Inter, sans-serif", "color": "#1E293B"},
-            margin={"l": 60, "r": 40, "t": 60, "b": 60},
+            width=self.default_width,
             showlegend=config.show_legend,
-            colorway=palette,
+            paper_bgcolor="rgba(255,255,255,1)",
+            plot_bgcolor="rgba(248,248,248,1)",
+            font=dict(family="Arial, sans-serif", size=12),
+            title_font=dict(size=16),
+            margin=dict(l=60, r=40, t=60, b=60),
         )
 
         if config.show_grid:
-            fig.update_xaxes(gridcolor="#E2E8F0", linecolor="#CBD5E1")
-            fig.update_yaxes(gridcolor="#E2E8F0", linecolor="#CBD5E1")
+            fig.update_xaxes(
+                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
+            )
+            fig.update_yaxes(
+                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
+            )
         else:
             fig.update_xaxes(showgrid=False)
             fig.update_yaxes(showgrid=False)
