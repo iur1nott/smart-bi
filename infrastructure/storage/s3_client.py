@@ -8,6 +8,7 @@ import logging
 from typing import Optional, BinaryIO, Dict, Any
 from datetime import datetime
 import uuid
+from urllib.parse import quote
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 from botocore.config import Config
@@ -99,9 +100,11 @@ class S3Client:
 
     def _sanitize_filename(self, filename: str) -> str:
         """Sanitize filename for safe storage."""
-        # Replace spaces and special characters
-        safe_name = filename.replace(" ", "_")
-        # Keep only alphanumeric, dots, underscores, and hyphens
+        import unicodedata
+        # Decompose accented chars (é → e + combining accent) then drop non-ASCII
+        normalized = unicodedata.normalize("NFKD", filename)
+        ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
+        safe_name = ascii_name.replace(" ", "_")
         safe_name = "".join(c for c in safe_name if c.isalnum() or c in "._-")
         return safe_name
 
@@ -144,7 +147,7 @@ class S3Client:
                     Body=file_data,
                     ContentType=content_type,
                     Metadata={
-                        "original-filename": filename,
+                        "original-filename": quote(filename),
                         "user-id": user_id,
                         "uploaded-at": datetime.utcnow().isoformat(),
                     },
@@ -157,7 +160,7 @@ class S3Client:
                     ExtraArgs={
                         "ContentType": content_type,
                         "Metadata": {
-                            "original-filename": filename,
+                            "original-filename": quote(filename),
                             "user-id": user_id,
                             "uploaded-at": datetime.utcnow().isoformat(),
                         },

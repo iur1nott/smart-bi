@@ -197,72 +197,50 @@ class FileService:
         Returns:
             List of FileSheet entities with columns
         """
-        import tempfile
-        import os
+        import io
 
         sheets = []
 
         try:
-            # Write to temp file for Polars
-            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
+            sheet_names = self._get_sheet_names(file_bytes)
 
-            try:
-                # Read all sheets
-                # Polars 0.20+ supports reading multiple sheets
-                sheet_names = self._get_sheet_names(tmp_path)
+            for sheet_name in sheet_names:
+                try:
+                    df = pl.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name)
 
-                for sheet_name in sheet_names:
-                    try:
-                        # Read sheet data
-                        df = pl.read_excel(tmp_path, sheet_name=sheet_name)
+                    sheet_id = str(uuid.uuid4())
+                    sheet = FileSheet(
+                        sheet_id=sheet_id,
+                        file_id=file_id,
+                        sheet_name=sheet_name,
+                    )
 
-                        # Create sheet entity
-                        sheet_id = str(uuid.uuid4())
-                        sheet = FileSheet(
-                            sheet_id=sheet_id,
-                            file_id=file_id,
-                            sheet_name=sheet_name,
-                        )
+                    columns = self._extract_columns_from_df(df, sheet_id)
+                    sheet.columns = columns
 
-                        # Extract columns
-                        columns = self._extract_columns_from_df(df, sheet_id)
-                        sheet.columns = columns
+                    sheets.append(sheet)
 
-                        sheets.append(sheet)
-
-                    except Exception as e:
-                        logger.warning(f"Error reading sheet {sheet_name}: {e}")
-                        continue
-
-            finally:
-                os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning(f"Error reading sheet {sheet_name}: {e}")
+                    continue
 
         except Exception as e:
             logger.error(f"Error extracting sheets: {e}")
 
         return sheets
 
-    def _get_sheet_names(self, file_path: str) -> List[str]:
-        """
-        Get all sheet names from an Excel file.
+    def _get_sheet_names(self, file_bytes: bytes) -> List[str]:
+        import io
+        from openpyxl import load_workbook
 
-        Args:
-            file_path: Path to Excel file
-
-        Returns:
-            List of sheet names
-        """
         try:
-            # Use openpyxl to get sheet names
-            from openpyxl import load_workbook
-
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            return wb.sheetnames
+            wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            names = wb.sheetnames
+            wb.close()
+            return names
         except Exception as e:
             logger.error(f"Error getting sheet names: {e}")
-            return ["Sheet1"]  # Default fallback
+            return ["Sheet1"]
 
     def _extract_columns_from_df(
         self, df: pl.DataFrame, sheet_id: str
@@ -330,19 +308,10 @@ class FileService:
             if not sheet:
                 return None, None
 
-            # Read sheet data
-            import tempfile
-            import os
+            import io
 
-            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-
-            try:
-                df = pl.read_excel(tmp_path, sheet_name=sheet.sheet_name)
-                return df, sheet
-            finally:
-                os.unlink(tmp_path)
+            df = pl.read_excel(io.BytesIO(file_bytes), sheet_name=sheet.sheet_name)
+            return df, sheet
 
         except Exception as e:
             logger.error(f"Error loading sheet data: {e}")

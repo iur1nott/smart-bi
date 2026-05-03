@@ -5,8 +5,6 @@ Updated to work with new file-based schema.
 """
 
 import logging
-import os
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -127,13 +125,11 @@ class DataService:
         Returns:
             Tuple of (FileSheet, DataFrame), or (None, None) on failure
         """
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
-
         try:
+            import io
+
             # Get sheet names
-            sheet_names = self._get_sheet_names(tmp_path)
+            sheet_names = self._get_sheet_names(file_bytes)
             if not sheet_names:
                 return None, None
 
@@ -143,7 +139,7 @@ class DataService:
                 target_sheet = sheet_names[0]
 
             # Read the data
-            df = pl.read_excel(tmp_path, sheet_name=target_sheet)
+            df = pl.read_excel(io.BytesIO(file_bytes), sheet_name=target_sheet)
             df = self._clean_duplicate_columns(df)
 
             # Use existing sheet or create new one
@@ -185,8 +181,6 @@ class DataService:
         except Exception as e:
             logger.error(f"Error loading Excel file: {e}")
             return None, None
-        finally:
-            os.unlink(tmp_path)
 
     def load_file_from_s3(
         self,
@@ -222,13 +216,16 @@ class DataService:
             logger.error(f"Error loading file from S3: {e}")
             return None, None
 
-    def _get_sheet_names(self, file_path: str) -> List[str]:
+    def _get_sheet_names(self, file_bytes: bytes) -> List[str]:
         """Get all sheet names from an Excel file."""
-        try:
-            from openpyxl import load_workbook
+        import io
+        from openpyxl import load_workbook
 
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            return wb.sheetnames
+        try:
+            wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            names = wb.sheetnames
+            wb.close()
+            return names
         except Exception as e:
             logger.error(f"Error getting sheet names: {e}")
             return ["Sheet1"]
