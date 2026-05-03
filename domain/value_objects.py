@@ -290,3 +290,16 @@ class ExportOptions:
             "footer_text": self.footer_text,
             "quality": self.quality,
         }
+
+
+# ---------------------------------------------------------------------------
+# Auth value objects (from backend/merge branch)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Credentials:
+    username: str
+    password: str
+
+    def is_valid(self) -> bool:
+        return len(self.username) >= 3 and len(self.password) >= 6

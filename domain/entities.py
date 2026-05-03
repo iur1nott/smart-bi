@@ -499,3 +499,117 @@ class UserSession:
                 },
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# Auth / persistence entities (from backend/merge branch)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class User:
+    user_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    username: str = ""
+    email: str = ""
+    password_hash: str = ""
+    created_at: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "user_id": self.user_id,
+            "username": self.username,
+            "email": self.email,
+            "password_hash": self.password_hash,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "User":
+        return cls(
+            user_id=data.get("user_id", str(uuid.uuid4())),
+            username=data.get("username", ""),
+            email=data.get("email", ""),
+            password_hash=data.get("password_hash", ""),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+        )
+
+
+@dataclass
+class UserSession:
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
+    token: str = ""
+    created_at: datetime = field(default_factory=datetime.now)
+    expires_at: Optional[datetime] = None
+    is_active: bool = True
+
+
+@dataclass
+class SheetColumn:
+    column_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    sheet_id: str = ""
+    column_name: str = ""
+    data_type: str = "String"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"column_id": self.column_id, "sheet_id": self.sheet_id, "column_name": self.column_name, "data_type": self.data_type}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SheetColumn":
+        return cls(column_id=data.get("column_id", str(uuid.uuid4())), sheet_id=data.get("sheet_id", ""), column_name=data.get("column_name", ""), data_type=data.get("data_type", "String"))
+
+
+@dataclass
+class FileSheet:
+    sheet_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    file_id: str = ""
+    sheet_name: str = ""
+    columns: List[SheetColumn] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"sheet_id": self.sheet_id, "file_id": self.file_id, "sheet_name": self.sheet_name, "columns": [c.to_dict() for c in self.columns]}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FileSheet":
+        return cls(sheet_id=data.get("sheet_id", str(uuid.uuid4())), file_id=data.get("file_id", ""), sheet_name=data.get("sheet_name", ""), columns=[SheetColumn.from_dict(c) for c in data.get("columns", [])])
+
+    def get_column_names(self) -> List[str]:
+        return [c.column_name for c in self.columns]
+
+    def get_column(self, name: str) -> Optional[SheetColumn]:
+        return next((c for c in self.columns if c.column_name == name), None)
+
+
+@dataclass
+class File:
+    file_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
+    file_name: str = ""
+    storage_path: str = ""
+    file_size_kb: int = 0
+    uploaded_at: datetime = field(default_factory=datetime.now)
+    sheets: List[FileSheet] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"file_id": self.file_id, "user_id": self.user_id, "file_name": self.file_name, "storage_path": self.storage_path, "file_size_kb": self.file_size_kb, "uploaded_at": self.uploaded_at.isoformat() if self.uploaded_at else None, "sheets": [s.to_dict() for s in self.sheets]}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "File":
+        return cls(file_id=data.get("file_id", str(uuid.uuid4())), user_id=data.get("user_id", ""), file_name=data.get("file_name", ""), storage_path=data.get("storage_path", ""), file_size_kb=data.get("file_size_kb", 0), uploaded_at=datetime.fromisoformat(data["uploaded_at"]) if data.get("uploaded_at") else datetime.now(), sheets=[FileSheet.from_dict(s) for s in data.get("sheets", [])])
+
+
+@dataclass
+class Dashboard:
+    """Legacy persistence entity used by DashboardRepository."""
+    dashboard_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
+    title: str = "New Dashboard"
+    created_at: datetime = field(default_factory=datetime.now)
+    visualizations: List[Any] = field(default_factory=list)
+    file: Optional[Any] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"dashboard_id": self.dashboard_id, "user_id": self.user_id, "title": self.title, "created_at": self.created_at.isoformat() if self.created_at else None}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Dashboard":
+        return cls(dashboard_id=data.get("dashboard_id", str(uuid.uuid4())), user_id=data.get("user_id", ""), title=data.get("title", "New Dashboard"), created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now())
