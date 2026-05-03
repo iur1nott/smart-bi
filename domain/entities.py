@@ -235,11 +235,14 @@ class VisualizationConfig:
     title: str = ""
     x_column: Optional[str] = None
     y_column: Optional[str] = None
+    # Multi-Y support: when non-empty overrides y_column for bar/column/line charts.
+    y_columns: List[str] = field(default_factory=list)
     color_column: Optional[str] = None
     size_column: Optional[str] = None
     aggregation: str = "sum"  # sum, mean, count, min, max
     show_legend: bool = True
     show_grid: bool = True
+    show_values: bool = False  # show data labels on charts
     color_scheme: str = "default"
     position: Dict[str, float] = field(default_factory=lambda: {"x": 0, "y": 0})
     size: Dict[str, float] = field(
@@ -253,11 +256,13 @@ class VisualizationConfig:
             "title": self.title,
             "x_column": self.x_column,
             "y_column": self.y_column,
+            "y_columns": self.y_columns,
             "color_column": self.color_column,
             "size_column": self.size_column,
             "aggregation": self.aggregation,
             "show_legend": self.show_legend,
             "show_grid": self.show_grid,
+            "show_values": self.show_values,
             "color_scheme": self.color_scheme,
             "position": self.position,
             "size": self.size,
@@ -273,11 +278,13 @@ class VisualizationConfig:
             title=data.get("title", ""),
             x_column=data.get("x_column"),
             y_column=data.get("y_column"),
+            y_columns=data.get("y_columns", []),
             color_column=data.get("color_column"),
             size_column=data.get("size_column"),
             aggregation=data.get("aggregation", "sum"),
             show_legend=data.get("show_legend", True),
             show_grid=data.get("show_grid", True),
+            show_values=data.get("show_values", False),
             color_scheme=data.get("color_scheme", "default"),
             position=data.get("position", {"x": 0, "y": 0}),
             size=data.get("size", {"width": 400, "height": 300}),

@@ -57,6 +57,7 @@ from presentation.sidebar import render_file_uploader, render_main_sidebar
 from presentation.widget_palette import (
     render_column_mapper,
     render_column_mapping,
+    render_viz_config_dialog,
     render_widget_palette,
 )
 
@@ -504,7 +505,6 @@ class SmartXLApp:
             )
 
         with main_col:
-            # Get sheet_id for data
             sheet_id = st.session_state.current_sheet_id
             if not sheet_id and dashboard.visualizations:
                 sheet_id = dashboard.visualizations[0].sheet_id
@@ -518,11 +518,34 @@ class SmartXLApp:
                 on_delete_visualization=self._on_delete_visualization,
                 on_add_comment=self._on_add_comment,
                 sheet=current_sheet,
+                dashboard_id=dashboard.dashboard_id,
+                on_update_measures=self._on_update_measures,
             )
 
-        # Column mapping dialog
+        # Column mapping dialog (quick-add flow from widget palette button)
         if st.session_state.show_column_mapping and st.session_state.new_viz_type:
             self._render_column_mapping_dialog()
+
+        # Edit-viz dialog (triggered by ✏️ button on a card)
+        editing_id = st.session_state.get("editing_viz_id")
+        if editing_id and current_sheet:
+            viz = dashboard.get_visualization(editing_id)
+            if viz:
+                def _on_save_config(cfg):
+                    self._on_update_visualization(editing_id, cfg)
+                    st.session_state.editing_viz_id = None
+                    st.rerun()
+                def _on_cancel_config():
+                    st.session_state.editing_viz_id = None
+                    st.rerun()
+                render_viz_config_dialog(
+                    viz_type=viz.viz_type,
+                    sheet=current_sheet,
+                    existing_config=viz.config,
+                    on_save=_on_save_config,
+                    on_cancel=_on_cancel_config,
+                    is_new=False,
+                )
 
     def _render_uploader_dialog(self) -> None:
         """Render the file uploader dialog."""
@@ -556,14 +579,32 @@ class SmartXLApp:
             st.rerun()
 
     def _render_export_modal(self) -> None:
-        """Render the export modal."""
+        """Render the export modal with chart images embedded."""
         dashboard = st.session_state.current_dashboard
         if not dashboard:
             return
 
+        # Render charts to PNG for embedding in PDF/HTML
+        chart_images: Dict[str, bytes] = {}
+        df = self.data_service.get_cached_sheet(st.session_state.current_sheet_id or "")
+        if df is not None:
+            from infrastructure.chart_factory import ChartFactory
+            from presentation.canvas import _VIZ_TYPE_MAP
+            cf = ChartFactory()
+            for viz in dashboard.visualizations:
+                if viz.config and viz.viz_type not in ("table", "metric_card", "measures"):
+                    try:
+                        vt = _VIZ_TYPE_MAP.get(viz.viz_type)
+                        if vt:
+                            fig = cf.create_chart(df, viz.config, vt)
+                            chart_images[viz.viz_id] = cf.export_figure_to_bytes(fig)
+                    except Exception:
+                        pass
+
         render_export_dialog(
-            analysis=dashboard,
-            on_export=self._on_export,
+            dashboard=dashboard,
+            export_service=self.export_service,
+            chart_images=chart_images,
         )
 
         if st.button("Fechar", key="close_export_btn"):
@@ -766,13 +807,12 @@ class SmartXLApp:
         if viz:
             viz.comment = comment
 
-    def _on_export(
-        self, dashboard: Dashboard, options: Dict[str, Any]
-    ) -> Optional[str]:
-        """Handle export action."""
-        # Export functionality
-        st.info("Export functionality coming soon!")
-        return None
+    def _on_update_measures(self, measures: list) -> None:
+        """Persist measures list in session_state (in-memory only)."""
+        dashboard = st.session_state.current_dashboard
+        if dashboard:
+            key = f"measures_{dashboard.dashboard_id}"
+            st.session_state[key] = measures
 
     def _process_uploaded_file(self, uploaded_file: Any) -> None:
         """

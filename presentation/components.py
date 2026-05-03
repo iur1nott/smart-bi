@@ -132,73 +132,93 @@ def render_settings_modal(
 
 
 def render_export_dialog(
-    analysis: Dashboard,
-    on_export: Callable[[Dashboard, Dict[str, Any]], Optional[str]],
+    dashboard: Dashboard,
+    export_service: Any,
+    chart_images: Optional[Dict[str, bytes]] = None,
 ) -> None:
-    """Render the export dialog."""
+    """
+    Export dialog: renders options and triggers ExportService.
+    Provides a download button on success so the user gets the file directly
+    without needing server-side file storage.
+    """
+    from domain.value_objects import ExportOptions
+
     st.markdown("### 📤 Exportar Dashboard")
 
-    # Export format
-    export_format = st.selectbox(
-        "Formato",
-        ["PDF", "HTML", "LaTeX"],
-        key="export_format_select",
-    )
+    c1, c2 = st.columns(2)
+    with c1:
+        fmt = st.selectbox("Formato", ["PDF", "HTML", "LaTeX (.tex)"],
+                           key="exp_fmt")
+    with c2:
+        layout = st.selectbox("Layout (PDF/LaTeX)", ["Relatório", "Slides (Beamer)"],
+                              key="exp_layout", help="Apenas relevante para PDF e LaTeX")
 
-    # Paper size (for PDF)
-    paper_size = st.selectbox(
-        "Tamanho do Papel",
-        ["A4", "Letter", "Legal"],
-        key="export_paper_size",
-    )
+    c3, c4 = st.columns(2)
+    with c3:
+        paper = st.selectbox("Papel", ["a4", "letter", "legal"], key="exp_paper")
+    with c4:
+        orient = st.radio("Orientação", ["Retrato", "Paisagem"],
+                          horizontal=True, key="exp_orient")
 
-    # Orientation
-    orientation = st.radio(
-        "Orientação",
-        ["Retrato", "Paisagem"],
-        horizontal=True,
-        key="export_orientation",
-    )
+    c5, c6 = st.columns(2)
+    with c5:
+        inc_cmt = st.checkbox("Incluir comentários", value=True, key="exp_cmt")
+    with c6:
+        inc_ts  = st.checkbox("Incluir data/hora",  value=True, key="exp_ts")
 
-    # Options
-    include_comments = st.checkbox(
-        "Incluir comentários",
-        value=True,
-        key="export_include_comments",
-    )
+    header_txt = st.text_input("Cabeçalho (opcional)", key="exp_header")
+    footer_txt = st.text_input("Rodapé (opcional)",    key="exp_footer")
 
-    include_timestamp = st.checkbox(
-        "Incluir data/hora",
-        value=True,
-        key="export_include_timestamp",
-    )
+    if st.button("📥 Gerar", type="primary", use_container_width=True):
+        opts = ExportOptions(
+            paper_size=paper,
+            orientation="portrait" if orient == "Retrato" else "landscape",
+            include_comments=inc_cmt,
+            include_timestamp=inc_ts,
+            header_text=header_txt,
+            footer_text=footer_txt,
+        )
+        use_slides = layout == "Slides (Beamer)"
+        images = chart_images or {}
 
-    # Header and footer
-    header_text = st.text_input(
-        "Texto do Cabeçalho (opcional)",
-        key="export_header_text",
-    )
-
-    footer_text = st.text_input(
-        "Texto do Rodapé (opcional)",
-        key="export_footer_text",
-    )
-
-    # Export button
-    if st.button("📥 Exportar", type="primary", use_container_width=True):
-        options = {
-            "format": export_format.lower(),
-            "paper_size": paper_size.lower(),
-            "orientation": "portrait" if orientation == "Retrato" else "landscape",
-            "include_comments": include_comments,
-            "include_timestamp": include_timestamp,
-            "header_text": header_text,
-            "footer_text": footer_text,
-        }
-
-        result = on_export(analysis, options)
-        if result:
-            st.success(f"✓ Exportado com sucesso: {result}")
+        with st.spinner("Gerando…"):
+            fmt_lower = fmt.lower()
+            if "pdf" in fmt_lower:
+                data = export_service.export_to_pdf(
+                    dashboard, opts, images, use_slides=use_slides
+                )
+                if data:
+                    st.download_button(
+                        "⬇️ Baixar PDF",
+                        data=data,
+                        file_name=f"{dashboard.title.replace(' ','_')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                else:
+                    st.error("Falha ao gerar PDF. Verifique se pdflatex está instalado ou se reportlab está disponível.")
+            elif "html" in fmt_lower:
+                data = export_service.export_to_html(dashboard, opts, images)
+                if data:
+                    st.download_button(
+                        "⬇️ Baixar HTML",
+                        data=data,
+                        file_name=f"{dashboard.title.replace(' ','_')}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                    )
+            else:
+                data = export_service.export_to_latex(
+                    dashboard, opts, images, use_slides=use_slides
+                )
+                if data:
+                    st.download_button(
+                        "⬇️ Baixar LaTeX",
+                        data=data,
+                        file_name=f"{dashboard.title.replace(' ','_')}.tex",
+                        mime="text/plain",
+                        use_container_width=True,
+                    )
 
 
 def render_notification(message: str, level: str = "info") -> None:

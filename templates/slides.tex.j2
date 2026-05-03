@@ -1,0 +1,66 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{xcolor}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\definecolor{primary}{HTML}{10B981}
+\definecolor{accent}{HTML}{1E293B}
+\setbeamercolor{palette primary}{bg=primary,fg=white}
+\setbeamercolor{palette secondary}{bg=accent,fg=white}
+\setbeamercolor{title}{fg=white}
+\setbeamercolor{frametitle}{fg=white,bg=accent}
+
+\title{ {{ title | latex_escape }} }
+{% if timestamp %}
+\date{ {{ timestamp }} }
+{% else %}
+\date{}
+{% endif %}
+\author{}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+{% for viz in visualizations %}
+\begin{frame}{ {{ viz.title | latex_escape }} }
+{% if viz.image_path %}
+  \begin{center}
+    \includegraphics[width=0.88\textwidth,height=0.70\textheight,keepaspectratio]{ {{ viz.image_path }} }
+  \end{center}
+{% endif %}
+
+{% if viz.table_data %}
+  \begin{center}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{ {{ viz.col_spec }} }
+  \toprule
+  {{ viz.header_row }} \\
+  \midrule
+  {{ viz.data_rows }}
+  \bottomrule
+  \end{tabular}
+  }
+  \end{center}
+{% endif %}
+
+{% if viz.comment %}
+  \vfill
+  \begin{block}{Observação}
+    {{ viz.comment | latex_escape }}
+  \end{block}
+{% endif %}
+\end{frame}
+
+{% endfor %}
+
+\end{document}

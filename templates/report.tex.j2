@@ -1,0 +1,83 @@
+\documentclass[{{ paper_size }}paper{% if landscape %},landscape{% endif %}]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{array}
+
+\geometry{margin={{ margin_mm }}mm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+{% if header_text %}
+\fancyhead[L]{\small {{ header_text | latex_escape }}}
+{% endif %}
+\fancyhead[R]{\small \thepage}
+{% if footer_text %}
+\fancyfoot[C]{\small \textit{ {{ footer_text | latex_escape }} }}
+{% endif %}
+
+\definecolor{primary}{HTML}{10B981}
+\definecolor{accent}{HTML}{1E293B}
+\definecolor{muted}{HTML}{64748B}
+
+\begin{document}
+
+% ── Capa ────────────────────────────────────────────────────────────────────
+\begin{center}
+  {\LARGE \textbf{ {{ title | latex_escape }} }}\\[1em]
+  {% if timestamp %}
+  {\small \textcolor{muted}{ {{ timestamp }} }}\\
+  {% endif %}
+\end{center}
+\vspace{2em}
+\hrule
+\vspace{2em}
+
+% ── Visualizações ────────────────────────────────────────────────────────────
+{% for viz in visualizations %}
+\subsection*{ {{ viz.title | latex_escape }} }
+
+{% if viz.image_path %}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{ {{ viz.image_path }} }
+  \caption{ {{ viz.title | latex_escape }} }
+\end{figure}
+{% endif %}
+
+{% if viz.table_data %}
+\begin{center}
+\begin{longtable}{ {{ viz.col_spec }} }
+\toprule
+{{ viz.header_row }} \\
+\midrule
+\endhead
+{{ viz.data_rows }}
+\bottomrule
+\end{longtable}
+\end{center}
+{% endif %}
+
+{% if viz.comment %}
+\textit{\textcolor{muted}{ {{ viz.comment | latex_escape }} }}
+{% endif %}
+
+\vspace{1em}
+{% endfor %}
+
+\end{document}

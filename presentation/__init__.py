@@ -16,6 +16,8 @@ from .widget_palette import (
     render_column_mapper,
     render_column_mapping,
     render_widget_palette,
+    render_viz_config_dialog,
+    render_data_preview,
 )
 
 __all__ = [
@@ -26,6 +28,8 @@ __all__ = [
     "render_widget_palette",
     "render_column_mapping",
     "render_column_mapper",
+    "render_viz_config_dialog",
+    "render_data_preview",
     "render_canvas",
     "render_settings_modal",
     "render_export_dialog",
