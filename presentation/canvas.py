@@ -19,19 +19,32 @@ from domain.entities import (
 
 # ── viz_type string → VisualizationType enum ────────────────────────────────
 _VIZ_TYPE_MAP = {
-    "bar":       VisualizationType.BAR,
-    "column":    VisualizationType.BAR,   # vertical bar = same chart type
-    "line":      VisualizationType.LINE,
-    "pie":       VisualizationType.PIE,
-    "area":      VisualizationType.AREA,
-    "scatter":   VisualizationType.SCATTER,
-    "histogram": VisualizationType.HISTOGRAM,
-    "box":       VisualizationType.BOX,
-    "heatmap":   VisualizationType.HEATMAP,
+    "bar":          VisualizationType.BAR,
+    "column":       VisualizationType.COLUMN_CHART,
+    "column_chart": VisualizationType.COLUMN_CHART,
+    "bar_chart":    VisualizationType.BAR_CHART,
+    "line":         VisualizationType.LINE,
+    "line_chart":   VisualizationType.LINE_CHART,
+    "pie":          VisualizationType.PIE,
+    "pie_chart":    VisualizationType.PIE_CHART,
+    "area":         VisualizationType.AREA,
+    "area_chart":   VisualizationType.AREA_CHART,
+    "scatter":      VisualizationType.SCATTER,
+    "scatter_plot": VisualizationType.SCATTER_PLOT,
+    "histogram":    VisualizationType.HISTOGRAM,
+    "box":          VisualizationType.BOX,
+    "box_plot":     VisualizationType.BOX_PLOT,
+    "heatmap":      VisualizationType.HEATMAP,
+    "table":        VisualizationType.TABLE,
+    "metric_card":  VisualizationType.METRIC_CARD,
+    "measures":     VisualizationType.MEASURES,
 }
 
-_SORTABLE_TYPES   = {"bar", "column", "pie"}
-_SEARCHABLE_TYPES = {"bar", "column", "line", "area", "scatter", "pie", "table", "histogram", "box"}
+_SORTABLE_TYPES   = {"bar", "column", "pie", "column_chart", "bar_chart", "pie_chart"}
+_SEARCHABLE_TYPES = {
+    "bar", "column", "line", "area", "scatter", "pie", "table", "histogram", "box",
+    "column_chart", "bar_chart", "line_chart", "area_chart", "scatter_plot", "pie_chart",
+}
 
 _SORT_OPTS = {
     "none":       "Sem ordenação",
@@ -39,6 +52,29 @@ _SORT_OPTS = {
     "x_desc":     "Categoria Z→A",
     "value_asc":  "Valor ↑",
     "value_desc": "Valor ↓",
+}
+
+_SORTABLE = {
+    VisualizationType.COLUMN_CHART,
+    VisualizationType.BAR_CHART,
+    VisualizationType.PIE_CHART,
+    VisualizationType.BAR,
+    VisualizationType.PIE,
+}
+
+_SEARCHABLE = {
+    VisualizationType.COLUMN_CHART,
+    VisualizationType.BAR_CHART,
+    VisualizationType.PIE_CHART,
+    VisualizationType.LINE_CHART,
+    VisualizationType.AREA_CHART,
+    VisualizationType.SCATTER_PLOT,
+    VisualizationType.TABLE,
+    VisualizationType.BAR,
+    VisualizationType.LINE,
+    VisualizationType.PIE,
+    VisualizationType.AREA,
+    VisualizationType.SCATTER,
 }
 
 
@@ -192,13 +228,29 @@ def render_viz_filters(viz_id: str, df: pl.DataFrame) -> pl.DataFrame:
 
 
 def render_interactive_controls(
-    viz_id: str, df: pl.DataFrame, viz_type: str, config: Optional[VisualizationConfig]
+    viz_id: str,
+    df: pl.DataFrame,
+    viz_type_or_config,
+    config: Optional[VisualizationConfig] = None,
 ) -> tuple:
-    """Search bar + sort dropdown. Returns (filtered_df, sort_by_str)."""
-    if viz_type not in _SEARCHABLE_TYPES:
+    """
+    Search bar + sort dropdown. Returns (filtered_df, sort_by_str).
+    Accepts either (viz_id, df, config) from dev-03 or
+    (viz_id, df, viz_type_str, config) from merge code.
+    """
+    # Normalise arguments: if viz_type_or_config is a string it's a viz_type str
+    if isinstance(viz_type_or_config, str):
+        viz_type_str = viz_type_or_config
+        effective_config = config
+        vtype = _VIZ_TYPE_MAP.get(viz_type_str)
+    else:
+        effective_config = viz_type_or_config
+        vtype = getattr(effective_config, "visualization_type", None) if effective_config else None
+
+    if vtype not in _SEARCHABLE:
         return df, "none"
 
-    has_sort = viz_type in _SORTABLE_TYPES
+    has_sort = vtype in _SORTABLE
     c_search, c_sort = st.columns([5, 3])
 
     with c_search:
@@ -218,9 +270,9 @@ def render_interactive_controls(
         else:
             st.empty()
 
-    if search and config:
+    if search and effective_config:
         try:
-            if viz_type == "table":
+            if vtype == VisualizationType.TABLE:
                 str_cols = [c for c in df.columns
                             if df.schema.get(c) in (pl.Utf8, pl.String)]
                 if str_cols:
@@ -231,9 +283,9 @@ def render_interactive_controls(
                             .str.contains(search.lower(), literal=True)
                         )
                     df = df.filter(mask)
-            elif config.x_column and config.x_column in df.columns:
+            elif effective_config.x_column and effective_config.x_column in df.columns:
                 df = df.filter(
-                    pl.col(config.x_column).cast(pl.String).str.to_lowercase()
+                    pl.col(effective_config.x_column).cast(pl.String).str.to_lowercase()
                     .str.contains(search.lower(), literal=True)
                 )
         except Exception:
@@ -293,16 +345,25 @@ def _apply_measures(df: pl.DataFrame, measures: list) -> pl.DataFrame:
 
 def render_measures_panel(
     viz_id: str,
-    dashboard_id: str,
+    analysis_or_dashboard_id,
     on_update_measures: Optional[Any],
     df: Optional[pl.DataFrame] = None,
 ) -> None:
-    """Builder UI for calculated measures; state lives in session_state."""
-    key = f"measures_{dashboard_id}"
-    if key not in st.session_state:
-        st.session_state[key] = []
+    """Builder UI for calculated measures; works with both dev-03 analysis and merge dashboard_id."""
+    # Support both calling conventions:
+    # dev-03: render_measures_panel(viz_id, analysis_obj, callback, df=df)
+    # merge:  render_measures_panel(viz_id, dashboard_id_str, callback, df=df)
+    if isinstance(analysis_or_dashboard_id, str):
+        # merge mode: state stored by dashboard_id
+        key = f"measures_{analysis_or_dashboard_id}"
+        if key not in st.session_state:
+            st.session_state[key] = []
+        measures: list = st.session_state[key]
+    else:
+        # dev-03 mode: measures stored on analysis object
+        analysis = analysis_or_dashboard_id
+        measures: list = list(getattr(analysis, "measures", None) or [])
 
-    measures: list = st.session_state[key]
     all_cols: list = list(df.columns) if df is not None else []
     default_col = all_cols[0] if all_cols else ""
     _OPS = ["+", "-", "*", "/"]
@@ -330,9 +391,11 @@ def render_measures_panel(
                 to_del.append(i)
 
     if to_del:
-        st.session_state[key] = [m for j, m in enumerate(measures) if j not in to_del]
+        updated = [m for j, m in enumerate(measures) if j not in to_del]
+        if isinstance(analysis_or_dashboard_id, str):
+            st.session_state[key] = updated
         if on_update_measures:
-            on_update_measures(st.session_state[key])
+            on_update_measures(updated)
         st.rerun()
 
     st.markdown("---")
@@ -395,7 +458,8 @@ def render_measures_panel(
         name = new_name.strip()
         if name and expr:
             measures.append({"name": name, "expression": expr})
-            st.session_state[key] = measures
+            if isinstance(analysis_or_dashboard_id, str):
+                st.session_state[key] = measures
             if on_update_measures:
                 on_update_measures(measures)
             if parts_key in st.session_state:
@@ -409,17 +473,85 @@ def render_measures_panel(
 # ── Canvas + visualization rendering ────────────────────────────────────────
 
 def render_canvas(
-    visualizations: List[Visualization],
-    data_service: Any,
-    sheet_id: str,
-    on_update_visualization,
-    on_delete_visualization,
-    on_add_comment,
+    visualizations: Optional[List] = None,
+    data_service: Any = None,
+    sheet_id: str = "",
+    on_update_visualization: Any = None,
+    on_delete_visualization: Any = None,
+    on_add_comment: Any = None,
     sheet: Optional[FileSheet] = None,
     dashboard_id: str = "",
     on_update_measures: Optional[Any] = None,
+    # dev-03 parameters
+    slide: Optional[Any] = None,
+    analysis_id: str = "",
+    analysis: Any = None,
 ) -> None:
-    """Render the main canvas with all visualizations."""
+    """
+    Render the main canvas with all visualizations.
+    Supports both merge (dashboard + visualizations list) and dev-03 (slide) modes.
+    """
+    from infrastructure.chart_factory import ChartFactory
+    chart_factory = ChartFactory()
+
+    # ── dev-03 mode: slide-based ──────────────────────────────────────────────
+    if slide is not None:
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            new_title = st.text_input(
+                "Título do slide", value=slide.title, key=f"slide_title_{slide.id}",
+                label_visibility="collapsed", placeholder="Título do slide…",
+            )
+        with col2:
+            st.caption(f"{len(slide.visualizations)} visual{'is' if len(slide.visualizations) != 1 else ''}")
+
+        df = data_service.get_cached_data(analysis_id)
+        if df is None:
+            st.warning("⚠️ No data loaded. Please upload an XLSX file.")
+            return
+
+        measures = getattr(analysis, "measures", None) or []
+        if measures:
+            try:
+                df = data_service.compute_measures(df, measures)
+            except Exception:
+                pass
+
+        if not slide.visualizations:
+            st.markdown(
+                """
+            <div style='border: 2px dashed #CBD5E1; border-radius: 12px; padding: 64px 32px;
+                        text-align: center; color: #94A3B8; margin: 24px 0;
+                        background: #F8FAFC;'>
+                <div style='font-size: 2.5rem; margin-bottom: 12px;'>📊</div>
+                <div style='font-size: 1.1rem; font-weight: 600; color: #64748B; margin-bottom: 6px;'>
+                    Slide vazio
+                </div>
+                <div style='font-size: 0.875rem;'>
+                    Use o painel à direita para adicionar gráficos, tabelas e métricas
+                </div>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+            return
+
+        for idx, viz in enumerate(slide.visualizations):
+            render_visualization(
+                viz=viz,
+                df=df,
+                chart_factory=chart_factory,
+                index=idx,
+                slide_id=slide.id,
+                on_update=on_update_visualization,
+                on_delete=on_delete_visualization,
+                on_add_comment=on_add_comment,
+                analysis=analysis,
+                on_update_measures=on_update_measures,
+            )
+        return
+
+    # ── merge mode: dashboard visualizations list ────────────────────────────
     df = data_service.get_cached_sheet(sheet_id)
 
     if df is None:
@@ -435,20 +567,9 @@ def render_canvas(
         )
         return
 
-    # Apply any calculated measures
     measures = st.session_state.get(f"measures_{dashboard_id}", [])
     if measures:
         df = _apply_measures(df, measures)
-
-    n = len(visualizations)
-    st.markdown(
-        f"""<div style='background:white;border-radius:12px;padding:16px 20px;
-                        margin-bottom:16px;border:1px solid #E2E8F0;'>
-              <h3 style='margin:0;color:#1E293B;'>📊 Dashboard</h3>
-              <span style='color:#64748B;font-size:14px;'>{n} visualizaç{'ão' if n==1 else 'ões'}</span>
-            </div>""",
-        unsafe_allow_html=True,
-    )
 
     if not visualizations:
         st.markdown(
@@ -462,8 +583,15 @@ def render_canvas(
         )
         return
 
-    from infrastructure.chart_factory import ChartFactory
-    chart_factory = ChartFactory()
+    n = len(visualizations)
+    st.markdown(
+        f"""<div style='background:white;border-radius:12px;padding:16px 20px;
+                        margin-bottom:16px;border:1px solid #E2E8F0;'>
+              <h3 style='margin:0;color:#1E293B;'>📊 Dashboard</h3>
+              <span style='color:#64748B;font-size:14px;'>{n} visualizaç{'ão' if n==1 else 'ões'}</span>
+            </div>""",
+        unsafe_allow_html=True,
+    )
 
     for idx, viz in enumerate(visualizations):
         render_visualization(
@@ -481,19 +609,35 @@ def render_canvas(
 
 
 def render_visualization(
-    viz: Visualization,
+    viz: Any,
     df: pl.DataFrame,
     chart_factory: Any,
     index: int,
-    on_update,
-    on_delete,
-    on_add_comment,
+    on_update: Any = None,
+    on_delete: Any = None,
+    on_add_comment: Any = None,
+    # merge params
     sheet: Optional[FileSheet] = None,
     dashboard_id: str = "",
+    # dev-03 params
+    slide_id: str = "",
+    analysis: Any = None,
     on_update_measures: Optional[Any] = None,
 ) -> None:
     """Render one visualization card with filters, sort, and comment."""
-    is_measures = viz.viz_type == "measures"
+    # Detect model type (merge Visualization vs dev-03 SlideVisualization)
+    is_dev03 = hasattr(viz, "id") and not hasattr(viz, "viz_id")
+    viz_id = viz.id if is_dev03 else viz.viz_id
+
+    # Determine if this is a measures panel
+    if is_dev03:
+        is_measures = (
+            viz.config is not None
+            and viz.config.visualization_type == VisualizationType.MEASURES
+        )
+    else:
+        is_measures = getattr(viz, "viz_type", "") == "measures"
+
     title = (viz.config.title if viz.config and viz.config.title else
              f"Visualização {index + 1}")
 
@@ -503,58 +647,107 @@ def render_visualization(
     with col_title:
         st.markdown(f'<p class="viz-card-title">{title}</p>', unsafe_allow_html=True)
     with col_actions:
-        if not is_measures:
-            b1, b2, b3 = st.columns(3)
-            with b1:
-                if st.button("✏️", key=f"edit_{viz.viz_id}", help="Configurar"):
-                    st.session_state.editing_viz_id = viz.viz_id
-                    st.rerun()
-            with b2:
-                if st.button("💬", key=f"cmt_{viz.viz_id}", help="Comentário"):
-                    st.session_state.commenting_viz_id = viz.viz_id
-            with b3:
-                if st.button("🗑️", key=f"del_{viz.viz_id}", help="Excluir"):
-                    on_delete(viz.viz_id)
-                    st.rerun()
+        if is_dev03:
+            btn_cols = st.columns(2) if not is_measures else st.columns(1)
+            if not is_measures:
+                with btn_cols[0]:
+                    if st.button("✏️", key=f"edit_{viz_id}", help="Configurar"):
+                        st.session_state.editing_viz_id = viz_id
+                        st.session_state.editing_slide_id = slide_id
+                with btn_cols[1]:
+                    if st.button("🗑", key=f"delete_{viz_id}", help="Excluir"):
+                        if on_delete:
+                            on_delete(slide_id, viz_id)
+                        st.rerun()
+            else:
+                with btn_cols[0]:
+                    if st.button("🗑", key=f"delete_{viz_id}", help="Excluir"):
+                        if on_delete:
+                            on_delete(slide_id, viz_id)
+                        st.rerun()
         else:
-            if st.button("🗑️", key=f"del_{viz.viz_id}", help="Excluir"):
-                on_delete(viz.viz_id)
-                st.rerun()
+            if not is_measures:
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    if st.button("✏️", key=f"edit_{viz_id}", help="Configurar"):
+                        st.session_state.editing_viz_id = viz_id
+                        st.rerun()
+                with b2:
+                    if st.button("💬", key=f"cmt_{viz_id}", help="Comentário"):
+                        st.session_state.commenting_viz_id = viz_id
+                with b3:
+                    if st.button("🗑️", key=f"del_{viz_id}", help="Excluir"):
+                        if on_delete:
+                            on_delete(viz_id)
+                        st.rerun()
+            else:
+                if st.button("🗑️", key=f"del_{viz_id}", help="Excluir"):
+                    if on_delete:
+                        on_delete(viz_id)
+                    st.rerun()
 
     if is_measures:
-        render_measures_panel(viz.viz_id, dashboard_id, on_update_measures, df=df)
-    elif viz.config:
-        df_filtered = render_viz_filters(viz.viz_id, df)
-        df_filtered, sort_by = render_interactive_controls(
-            viz.viz_id, df_filtered, viz.viz_type, viz.config
+        render_measures_panel(
+            viz_id,
+            analysis if is_dev03 else dashboard_id,
+            on_update_measures,
+            df=df,
         )
+    elif viz.config:
+        df_filtered = render_viz_filters(viz_id, df)
+
+        if is_dev03:
+            df_filtered, sort_by = render_interactive_controls(
+                viz_id, df_filtered, viz.config
+            )
+        else:
+            df_filtered, sort_by = render_interactive_controls(
+                viz_id, df_filtered, viz.viz_type, viz.config
+            )
+
         try:
-            if viz.viz_type == "table":
-                render_table(viz, df_filtered)
-            elif viz.viz_type == "metric_card":
-                render_metric_card(viz, df_filtered)
+            if is_dev03:
+                vtype = viz.config.visualization_type
+                if vtype == VisualizationType.TABLE:
+                    render_table(viz, df_filtered)
+                elif vtype == VisualizationType.METRIC_CARD:
+                    render_metric_card(viz, df_filtered)
+                else:
+                    fig = chart_factory.create_chart(
+                        df_filtered, viz.config, sort_by=sort_by
+                    )
+                    st.plotly_chart(fig, width='stretch', key=f"chart_{viz_id}")
             else:
-                render_chart(viz, df_filtered, chart_factory, sort_by)
+                if viz.viz_type == "table":
+                    render_table(viz, df_filtered)
+                elif viz.viz_type == "metric_card":
+                    render_metric_card(viz, df_filtered)
+                else:
+                    render_chart(viz, df_filtered, chart_factory, sort_by)
         except Exception as e:
             st.error(f"Erro ao renderizar: {e}")
 
-        # Comment expander
         if viz.comment:
             st.caption(f"💬 {viz.comment}")
         with st.expander("💬 Comentário", expanded=False):
-            new_comment = st.text_area(
+            comment = st.text_area(
                 "Comentário", value=viz.comment or "",
-                key=f"comment_area_{viz.viz_id}", height=60, label_visibility="collapsed",
+                key=f"comment_{viz_id}", height=60,
+                label_visibility="collapsed",
             )
-            if st.button("Salvar comentário", key=f"save_cmt_{viz.viz_id}"):
-                on_add_comment(viz.viz_id, new_comment)
+            if st.button("Salvar", key=f"save_comment_{viz_id}"):
+                if on_add_comment:
+                    if is_dev03:
+                        on_add_comment(slide_id, viz_id, comment)
+                    else:
+                        on_add_comment(viz_id, comment)
                 st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_chart(
-    viz: Visualization,
+    viz: Any,
     df: pl.DataFrame,
     chart_factory: Any,
     sort_by: str = "none",
@@ -570,7 +763,7 @@ def render_chart(
         st.error(f"Erro ao criar gráfico: {e}")
 
 
-def render_table(viz: Visualization, df: pl.DataFrame) -> None:
+def render_table(viz: Any, df: pl.DataFrame) -> None:
     config = viz.config
     if not config:
         return
@@ -584,11 +777,11 @@ def render_table(viz: Visualization, df: pl.DataFrame) -> None:
     if not cols:
         st.warning("Nenhuma coluna válida.")
         return
-    st.dataframe(df.select(cols).head(200).to_pandas(),
-                 use_container_width=True, height=300)
+    table_df = df.select(cols)
+    st.dataframe(table_df.head(200).to_pandas(), use_container_width=True, height=300)
 
 
-def render_metric_card(viz: Visualization, df: pl.DataFrame) -> None:
+def render_metric_card(viz: Any, df: pl.DataFrame) -> None:
     config = viz.config
     if not config or not config.y_column:
         st.warning("Selecione uma coluna para a métrica")
@@ -623,3 +816,51 @@ def render_metric_card(viz: Visualization, df: pl.DataFrame) -> None:
         )
     except Exception as e:
         st.error(f"Erro ao calcular métrica: {e}")
+
+
+def render_slide_navigator(
+    slides: List[Any],
+    current_slide_id: str,
+    on_slide_change: Callable,
+    on_add_slide: Callable,
+    on_delete_slide: Callable,
+) -> None:
+    """Barra de navegação de slides em estilo tab bar."""
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;'/>",
+        unsafe_allow_html=True,
+    )
+
+    n = len(slides)
+    col_widths = [3] * min(n, 8) + [1]
+    cols = st.columns(col_widths)
+
+    for i, slide in enumerate(slides[:8]):
+        with cols[i]:
+            is_current = slide.id == current_slide_id
+            short = slide.title[:14] + "…" if len(slide.title) > 14 else slide.title
+            label = f"**{i+1}. {short}**" if is_current else f"{i+1}. {short}"
+            if st.button(
+                label,
+                key=f"nav_slide_{slide.id}",
+                width='stretch',
+                type="primary" if is_current else "secondary",
+            ):
+                on_slide_change(slide.id)
+                st.rerun()
+
+    with cols[-1]:
+        if st.button("＋", width='stretch', help="Novo slide"):
+            on_add_slide()
+            st.rerun()
+
+    if n > 1:
+        _, col_del = st.columns([6, 1])
+        with col_del:
+            if st.button(
+                "🗑 Deletar slide",
+                width='stretch',
+                help="Remover slide atual",
+            ):
+                on_delete_slide(current_slide_id)
+                st.rerun()

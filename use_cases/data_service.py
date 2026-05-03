@@ -13,6 +13,7 @@ import streamlit as st
 
 from config import Constants, settings
 from domain.entities import (
+    ColumnType,
     Dashboard,
     File,
     FileSheet,
@@ -467,3 +468,102 @@ class DataService:
             "q1": float(col.quantile(0.25)),
             "q3": float(col.quantile(0.75)),
         }
+
+    def validate_and_cast_types(self, df: pl.DataFrame, schema_overrides: Dict[str, ColumnType]) -> pl.DataFrame:
+        """
+        Força a conversão de colunas para os tipos esperados, 
+        limpando dados sujos em colunas numéricas.
+        """
+        for col_name, expected_type in schema_overrides.items():
+            if col_name not in df.columns:
+                continue
+                
+            if expected_type == ColumnType.NUMERIC:
+                # Limpeza: remove R$, espaços e trata a vírgula como ponto
+                df = df.with_columns(
+                    pl.col(col_name)
+                    .cast(pl.String)
+                    .str.replace_all(r"[R\$\s\.]", "")
+                    .str.replace(",", ".")
+                    .cast(pl.Float64, strict=False)
+                )
+            elif expected_type == ColumnType.DATETIME:
+                # Tenta converter strings para data automaticamente
+                df = df.with_columns(
+                    pl.col(col_name).cast(pl.Date, strict=False)
+                )
+            elif expected_type in (ColumnType.CATEGORICAL, ColumnType.TEXT):
+                # Garante que a coluna seja string
+                df = df.with_columns(
+                    pl.col(col_name).cast(pl.String, strict=False)
+                )
+
+        return df
+
+    def rename_columns(self, df: pl.DataFrame, mapping: Dict[str, str]) -> pl.DataFrame:
+        """
+        Renomeia colunas evitando duplicatas. 
+        Se o usuário mapear duas colunas para 'Categoria', vira 'Categoria' e 'Categoria_1'.
+        """
+        new_names = []
+        seen_names = {}
+
+        # Criamos a lista de novos nomes verificando duplicatas
+        for col in df.columns:
+            if col in mapping:
+                desired_name = mapping[col]
+                # Se o nome já foi usado, adiciona um sufixo numérico
+                if desired_name in seen_names:
+                    seen_names[desired_name] += 1
+                    new_name = f"{desired_name}_{seen_names[desired_name]}"
+                else:
+                    seen_names[desired_name] = 0
+                    new_name = desired_name
+                new_names.append(new_name)
+            else:
+                new_names.append(col) # Mantém o original se não foi mapeado
+
+        # O Polars renomeia todas de uma vez pela ordem da lista
+        return df.rename({old: new for old, new in zip(df.columns, new_names)})
+
+    def store_data(self, analysis_id: str, df: pl.DataFrame) -> None:
+        """
+        Armazena o DataFrame processado no cache para ser utilizado
+        pelas visualizações da análise.
+        """
+        st.session_state.data_cache[analysis_id] = df
+
+    def compute_measures(self, df: pl.DataFrame, measures: list) -> pl.DataFrame:
+        """
+        Adiciona colunas calculadas (medidas) ao DataFrame.
+        Cada medida deve ter "name" e "expression" (sintaxe [Nome da Coluna]).
+        Medidas inválidas são silenciosamente ignoradas.
+        """
+        for measure in measures:
+            name = (measure.get("name") or "").strip()
+            expr_str = (measure.get("expression") or "").strip()
+            if not name or not expr_str:
+                continue
+            try:
+                expr = self._parse_measure_expr(df, expr_str)
+                df = df.with_columns(expr.alias(name))
+            except Exception:
+                pass
+        return df
+
+    def _parse_measure_expr(self, df: pl.DataFrame, expr_str: str) -> pl.Expr:
+        """
+        Converte expressão com [Coluna] para Polars Expr.
+        Sintaxe suportada: [Nome da Coluna] com +, -, *, / e parênteses.
+        Exemplo: [Receita] / [Quantidade]
+        """
+        import re
+        py_expr = re.sub(
+            r'\[([^\]]+)\]',
+            lambda m: f'pl.col("{m.group(1)}")',
+            expr_str,
+        )
+        result = eval(py_expr, {"__builtins__": {}}, {"pl": pl})
+        if not isinstance(result, pl.Expr):
+            raise ValueError("Expressão deve resultar em uma coluna Polars")
+        return result

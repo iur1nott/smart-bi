@@ -3,49 +3,249 @@ Components - Reusable UI components for the dashboard builder.
 Updated for new schema with dashboards.
 """
 
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional, List
+import os
 import streamlit as st
+from datetime import datetime
 
 from domain.entities import Dashboard
 
 
-def render_welcome_screen(on_new_dashboard: Callable[[], None]) -> None:
-    """Render the welcome screen for new users."""
+def render_settings_modal(current_settings: Dict[str, Any], on_save: Callable) -> None:
+    """Render the settings modal/dialog."""
+    st.markdown("## ⚙️ Settings")
+
+    tab1, tab2, tab3 = st.tabs(["Appearance", "Export", "Data"])
+
+    with tab1:
+        st.markdown("### Appearance Settings")
+        theme = st.selectbox(
+            "Theme",
+            ["light", "dark"],
+            index=0 if current_settings.get("theme", "light") == "light" else 1,
+        )
+        grid_visible = st.checkbox(
+            "Show Grid Lines", value=current_settings.get("grid_visible", True)
+        )
+
+    with tab2:
+        st.markdown("### Export Settings")
+        export_format = st.selectbox(
+            "Default Export Format",
+            ["pdf", "latex", "html"],
+            index=["pdf", "latex", "html"].index(
+                current_settings.get("export_format", "pdf")
+            ),
+        )
+        paper_size = st.selectbox(
+            "Paper Size",
+            ["a4", "letter", "legal"],
+            index=["a4", "letter", "legal"].index(
+                current_settings.get("paper_size", "a4")
+            ),
+        )
+        include_comments = st.checkbox(
+            "Include Comments in Export",
+            value=current_settings.get("include_comments", True),
+        )
+
+    with tab3:
+        st.markdown("### Data Settings")
+        auto_save = st.checkbox(
+            "Auto-save Changes", value=current_settings.get("auto_save", True)
+        )
+
+    st.markdown("---")
+    if st.button("💾 Save Settings", type="primary"):
+        new_settings = {
+            "theme": theme,
+            "grid_visible": grid_visible,
+            "export_format": export_format,
+            "paper_size": paper_size,
+            "include_comments": include_comments,
+            "auto_save": auto_save,
+        }
+        on_save(new_settings)
+        st.success("Settings saved!")
+
+
+def render_analysis_history(
+    analyses: List[Dict[str, Any]],
+    on_select: Callable,
+    on_delete: Callable,
+    on_rename: Callable,
+) -> None:
+    """Render the analysis history list."""
+    st.markdown("## 📜 Analysis History")
+
+    if not analyses:
+        st.info("No analyses yet. Create a new analysis to get started.")
+        return
+
+    for analysis in analyses:
+        with st.container():
+            col1, col2, col3 = st.columns([3, 1, 1])
+
+            with col1:
+                st.markdown(f"**{analysis.get('name', 'Unnamed')}**")
+                st.caption(
+                    f"📄 {analysis.get('file_name', 'No file')} | 📊 {analysis.get('slide_count', 0)} slides"
+                )
+
+                updated = analysis.get("updated_at", "")
+                if updated:
+                    try:
+                        dt = datetime.fromisoformat(updated)
+                        st.caption(f"Updated: {dt.strftime('%Y-%m-%d %H:%M')}")
+                    except Exception:
+                        pass
+
+            with col2:
+                if st.button(
+                    "📂 Open", key=f"open_{analysis['id']}", width='stretch'
+                ):
+                    on_select(analysis["id"])
+
+            with col3:
+                if st.button(
+                    "🗑️", key=f"delete_{analysis['id']}", help="Delete analysis"
+                ):
+                    on_delete(analysis["id"])
+                    st.rerun()
+
+            st.markdown("---")
+
+
+@st.dialog("📤 Exportar PDF", width="large")
+def render_export_dialog(analysis, on_export: Callable) -> None:
+    """Modal de exportação para PDF (usando @st.dialog)."""
+    total_vizs = sum(
+        1 for s in analysis.slides
+        for v in s.visualizations
+        if v.config
+    )
+
+    st.markdown(
+        f"<p style='color:#64748B;font-size:.88rem;margin:0 0 16px;'>"
+        f"<b>{analysis.name}</b> · {len(analysis.slides)} slide(s) · "
+        f"{total_vizs} visualização(ões)</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        paper_size = st.selectbox("Tamanho do papel", ["A4", "Letter", "Legal"], index=0)
+    with col2:
+        orientation = st.selectbox("Orientação", ["Portrait", "Landscape"], index=0)
+
+    col3, col4 = st.columns(2)
+    with col3:
+        include_comments = st.checkbox("Incluir comentários", value=True)
+    with col4:
+        st.caption("Filtros ativos são aplicados automaticamente no PDF.")
+
+    header_text = st.text_input("Cabeçalho (opcional)", placeholder="Texto do cabeçalho…")
+    footer_text = st.text_input("Rodapé (opcional)", placeholder="Texto do rodapé…")
+
+    st.markdown("---")
+
+    col_btn, col_cancel = st.columns([1, 1])
+    with col_btn:
+        gerar = st.button("📤 Gerar PDF", type="primary", width='stretch')
+    with col_cancel:
+        if st.button("✗ Cancelar", width='stretch'):
+            st.rerun()
+
+    if gerar:
+        with st.spinner("Gerando PDF…"):
+            export_options = {
+                "format": "pdf",
+                "paper_size": paper_size.lower(),
+                "orientation": orientation.lower(),
+                "include_comments": include_comments,
+                "header_text": header_text,
+                "footer_text": footer_text,
+            }
+            result = on_export(analysis, export_options)
+
+        if result:
+            try:
+                with open(result, "rb") as f:
+                    file_data = f.read()
+                st.success("PDF gerado!")
+                st.download_button(
+                    label="📥 Baixar PDF",
+                    data=file_data,
+                    file_name=os.path.basename(result),
+                    mime="application/pdf",
+                    width='stretch',
+                )
+            except Exception as e:
+                st.error(f"Erro ao ler arquivo: {str(e)}")
+
+
+def render_notification(message: str, level: str = "info") -> None:
+    """Render a notification message."""
+    if level == "success":
+        st.success(message)
+    elif level == "error":
+        st.error(message)
+    elif level == "warning":
+        st.warning(message)
+    else:
+        st.info(message)
+
+
+def render_welcome_screen(on_new_analysis: Callable) -> None:
+    """Tela de boas-vindas com hero e cards de features."""
     st.markdown(
         """
-        <div style='
-            text-align: center;
-            padding: 60px 40px;
-            background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-            border-radius: 20px;
-            margin: 20px 0;
-        '>
-            <div style='font-size: 80px; margin-bottom: 20px;'>📊</div>
-            <h1 style='color: #10B981; margin: 0; font-size: 32px;'>Bem-vindo ao SmartXL</h1>
-            <p style='color: #64748B; font-size: 18px; margin-top: 16px;'>
-                Crie dashboards profissionais a partir dos seus dados Excel
+        <div style='text-align:center;padding:48px 16px 32px;'>
+            <div style='font-size:3rem;margin-bottom:12px;'>📊</div>
+            <h1 style='font-size:2rem;font-weight:800;color:#1E293B;margin:0 0 8px;'>
+                Smart BI
+            </h1>
+            <p style='font-size:1.05rem;color:#64748B;max-width:420px;margin:0 auto 28px;'>
+                Crie dashboards interativos a partir das suas planilhas Excel em minutos.
             </p>
-            <div style='margin-top: 30px; display: flex; justify-content: center; gap: 20px;'>
-                <div style='text-align: center;'>
-                    <div style='font-size: 32px;'>📁</div>
-                    <div style='color: #475569; font-size: 14px; margin-top: 8px;'>Carregue seus dados</div>
-                </div>
-                <div style='text-align: center;'>
-                    <div style='font-size: 32px;'>📊</div>
-                    <div style='color: #475569; font-size: 14px; margin-top: 8px;'>Crie visualizações</div>
-                </div>
-                <div style='text-align: center;'>
-                    <div style='font-size: 32px;'>📤</div>
-                    <div style='color: #475569; font-size: 14px; margin-top: 8px;'>Exporte relatórios</div>
-                </div>
-            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if st.button("➕ Criar Novo Dashboard", type="primary", use_container_width=True):
-        on_new_dashboard()
+    _, col_btn, _ = st.columns([2, 3, 2])
+    with col_btn:
+        if st.button(
+            "📂  Carregar planilha Excel",
+            type="primary",
+            width='stretch',
+        ):
+            on_new_analysis()
+
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+
+    features = [
+        ("📊", "12 tipos de gráfico", "Colunas, Barras, Linhas, Pizza, Área, Dispersão, Histograma, Box, Heatmap e mais"),
+        ("🔍", "Filtros por visual", "Filtre cada gráfico de forma independente sem afetar os demais"),
+        ("📐", "Medidas calculadas", "Crie KPIs customizados como Ticket Médio, Margem % e Crescimento"),
+        ("📤", "Exportação em PDF", "Gere relatórios prontos para apresentação com um clique"),
+    ]
+
+    cols = st.columns(len(features))
+    for col, (icon, title, desc) in zip(cols, features):
+        with col:
+            st.markdown(
+                f"""
+                <div style='background:#FAF9F6;border:1px solid #DDD8D0;border-radius:10px;
+                            padding:20px 16px;text-align:center;height:100%;'>
+                    <div style='font-size:1.8rem;margin-bottom:10px;'>{icon}</div>
+                    <div style='font-size:.88rem;font-weight:600;color:#2C2B28;margin-bottom:6px;'>{title}</div>
+                    <div style='font-size:.78rem;color:#7A7870;line-height:1.4;'>{desc}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def render_header_bar(
@@ -76,163 +276,6 @@ def render_header_bar(
             on_export()
 
 
-def render_settings_modal(
-    current_settings: Dict[str, Any],
-    on_save: Callable[[Dict[str, Any]], None],
-) -> None:
-    """Render the settings modal."""
-    st.markdown("### ⚙️ Configurações")
-
-    # Theme settings
-    theme = st.selectbox(
-        "Tema",
-        ["Claro", "Escuro", "Automático"],
-        index=["light", "dark", "auto"].index(current_settings.get("theme", "light")),
-        key="settings_theme",
-    )
-
-    # Language settings
-    language = st.selectbox(
-        "Idioma",
-        ["Português", "English", "Español"],
-        index=["pt", "en", "es"].index(current_settings.get("language", "pt")),
-        key="settings_language",
-    )
-
-    # Export settings
-    default_format = st.selectbox(
-        "Formato de Exportação Padrão",
-        ["PDF", "HTML", "LaTeX"],
-        index=["pdf", "html", "latex"].index(
-            current_settings.get("default_export_format", "pdf")
-        ),
-        key="settings_export_format",
-    )
-
-    # Chart settings
-    chart_colors = st.selectbox(
-        "Esquema de Cores",
-        ["Padrão", "Corporativo", "Pastel", "Escuro"],
-        index=["default", "corporate", "pastel", "dark"].index(
-            current_settings.get("chart_colors", "default")
-        ),
-        key="settings_chart_colors",
-    )
-
-    # Save button
-    if st.button("Salvar Configurações", type="primary"):
-        new_settings = {
-            "theme": theme.lower(),
-            "language": language.lower(),
-            "default_export_format": default_format.lower(),
-            "chart_colors": chart_colors.lower(),
-        }
-        on_save(new_settings)
-        st.success("Configurações salvas!")
-
-
-def render_export_dialog(
-    dashboard: Dashboard,
-    export_service: Any,
-    chart_images: Optional[Dict[str, bytes]] = None,
-) -> None:
-    """
-    Export dialog: renders options and triggers ExportService.
-    Provides a download button on success so the user gets the file directly
-    without needing server-side file storage.
-    """
-    from domain.value_objects import ExportOptions
-
-    st.markdown("### 📤 Exportar Dashboard")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        fmt = st.selectbox("Formato", ["PDF", "HTML", "LaTeX (.tex)"],
-                           key="exp_fmt")
-    with c2:
-        layout = st.selectbox("Layout (PDF/LaTeX)", ["Relatório", "Slides (Beamer)"],
-                              key="exp_layout", help="Apenas relevante para PDF e LaTeX")
-
-    c3, c4 = st.columns(2)
-    with c3:
-        paper = st.selectbox("Papel", ["a4", "letter", "legal"], key="exp_paper")
-    with c4:
-        orient = st.radio("Orientação", ["Retrato", "Paisagem"],
-                          horizontal=True, key="exp_orient")
-
-    c5, c6 = st.columns(2)
-    with c5:
-        inc_cmt = st.checkbox("Incluir comentários", value=True, key="exp_cmt")
-    with c6:
-        inc_ts  = st.checkbox("Incluir data/hora",  value=True, key="exp_ts")
-
-    header_txt = st.text_input("Cabeçalho (opcional)", key="exp_header")
-    footer_txt = st.text_input("Rodapé (opcional)",    key="exp_footer")
-
-    if st.button("📥 Gerar", type="primary", use_container_width=True):
-        opts = ExportOptions(
-            paper_size=paper,
-            orientation="portrait" if orient == "Retrato" else "landscape",
-            include_comments=inc_cmt,
-            include_timestamp=inc_ts,
-            header_text=header_txt,
-            footer_text=footer_txt,
-        )
-        use_slides = layout == "Slides (Beamer)"
-        images = chart_images or {}
-
-        with st.spinner("Gerando…"):
-            fmt_lower = fmt.lower()
-            if "pdf" in fmt_lower:
-                data = export_service.export_to_pdf(
-                    dashboard, opts, images, use_slides=use_slides
-                )
-                if data:
-                    st.download_button(
-                        "⬇️ Baixar PDF",
-                        data=data,
-                        file_name=f"{dashboard.title.replace(' ','_')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-                else:
-                    st.error("Falha ao gerar PDF. Verifique se pdflatex está instalado ou se reportlab está disponível.")
-            elif "html" in fmt_lower:
-                data = export_service.export_to_html(dashboard, opts, images)
-                if data:
-                    st.download_button(
-                        "⬇️ Baixar HTML",
-                        data=data,
-                        file_name=f"{dashboard.title.replace(' ','_')}.html",
-                        mime="text/html",
-                        use_container_width=True,
-                    )
-            else:
-                data = export_service.export_to_latex(
-                    dashboard, opts, images, use_slides=use_slides
-                )
-                if data:
-                    st.download_button(
-                        "⬇️ Baixar LaTeX",
-                        data=data,
-                        file_name=f"{dashboard.title.replace(' ','_')}.tex",
-                        mime="text/plain",
-                        use_container_width=True,
-                    )
-
-
-def render_notification(message: str, level: str = "info") -> None:
-    """Render a notification message."""
-    if level == "success":
-        st.success(message)
-    elif level == "error":
-        st.error(message)
-    elif level == "warning":
-        st.warning(message)
-    else:
-        st.info(message)
-
-
 def render_dashboard_history(
     dashboards: list,
     current_dashboard_id: Optional[str],
@@ -254,9 +297,7 @@ def render_dashboard_history(
 
             with col1:
                 if is_current:
-                    st.markdown(
-                        f"**▶ {dashboard.title}**",
-                    )
+                    st.markdown(f"**▶ {dashboard.title}**")
                 else:
                     if st.button(
                         f"📂 {dashboard.title}",

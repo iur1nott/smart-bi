@@ -9,6 +9,159 @@ from typing import Any, Callable, List, Optional
 import streamlit as st
 
 from domain.entities import Dashboard
+from utils.session_state import get_state, set_state
+
+
+def render_sidebar(
+    analysis_service,
+    on_new_analysis: Callable,
+    on_select_analysis: Callable,
+    on_settings_click: Callable,
+    on_upload: Callable,
+) -> None:
+    """Sidebar dark com logo, upload, histórico e configurações."""
+    with st.sidebar:
+        # ── Logo / Brand ──────────────────────────────────────────────────────
+        st.markdown(
+            """
+            <div style='padding: 8px 0 20px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 20px;'>
+                <div style='font-size: 1.4rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.3px;'>
+                    📊 Smart BI
+                </div>
+                <div style='font-size: 0.72rem; color: #64748B; margin-top: 2px;'>
+                    Dashboard Builder
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # ── Ações principais ──────────────────────────────────────────────────
+        if st.button("＋  Nova análise", width='stretch', type="primary"):
+            on_new_analysis()
+
+        st.markdown("<div style='margin: 8px 0;'></div>", unsafe_allow_html=True)
+
+        # Upload inline (toggle)
+        if st.button("📂  Carregar dados", width='stretch'):
+            set_state("show_uploader", not get_state("show_uploader"))
+
+        if get_state("show_uploader"):
+            with st.container():
+                st.markdown(
+                    "<div style='background:rgba(255,255,255,.05);border-radius:8px;"
+                    "padding:12px;margin-top:8px;border:1px solid rgba(255,255,255,.1)'>",
+                    unsafe_allow_html=True,
+                )
+                analysis_name = st.text_input(
+                    "Nome", value="Nova Análise", label_visibility="collapsed",
+                    placeholder="Nome da análise…",
+                )
+                uploaded_file = st.file_uploader(
+                    "Excel", type=["xlsx", "xls", "csv"], label_visibility="collapsed"
+                )
+                if uploaded_file:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("✓ Carregar", type="primary", width='stretch'):
+                            on_upload(uploaded_file, analysis_name)
+                            set_state("show_uploader", False)
+                    with c2:
+                        if st.button("✗", width='stretch'):
+                            set_state("show_uploader", False)
+                            st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='border-top:1px solid rgba(255,255,255,.08);margin:20px 0 16px;'></div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── Histórico ─────────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='font-size:.7rem;font-weight:600;letter-spacing:.08em;"
+            "color:#475569;text-transform:uppercase;margin-bottom:10px;'>Recentes</div>",
+            unsafe_allow_html=True,
+        )
+
+        history = analysis_service.get_analysis_history()
+        if history:
+            history.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+            current_id = st.session_state.get("current_analysis_id")
+
+            for item in history[:8]:
+                aid = item.get("id")
+                name = item.get("name", "Sem nome")
+                updated = item.get("updated_at", "")
+                is_active = current_id == aid
+
+                try:
+                    dt = datetime.fromisoformat(updated)
+                    date_str = dt.strftime("%d/%m %H:%M")
+                except Exception:
+                    date_str = ""
+
+                active_style = (
+                    "background:rgba(59,130,246,.25);border-color:rgba(59,130,246,.5);"
+                    if is_active else ""
+                )
+                st.markdown(
+                    f"""
+                    <div style='padding:8px 10px;border-radius:6px;margin-bottom:4px;
+                                border:1px solid rgba(255,255,255,.07);cursor:pointer;
+                                transition:background .15s;{active_style}'
+                         onclick='void(0)'>
+                        <div style='font-size:.83rem;font-weight:{"600" if is_active else "400"};
+                                    color:{"#93C5FD" if is_active else "#CBD5E1"};
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>
+                            {"▶ " if is_active else ""}{name}
+                        </div>
+                        <div style='font-size:.7rem;color:#475569;margin-top:2px;'>{date_str}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    name[:28],
+                    key=f"history_{aid}",
+                    width='stretch',
+                    type="primary" if is_active else "secondary",
+                ):
+                    on_select_analysis(aid)
+        else:
+            st.markdown(
+                "<div style='font-size:.8rem;color:#475569;padding:8px 0;'>"
+                "Nenhuma análise ainda.</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ── Rodapé ────────────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='border-top:1px solid rgba(255,255,255,.08);margin:20px 0 12px;'></div>",
+            unsafe_allow_html=True,
+        )
+
+        settings = analysis_service.get_settings()
+        auto_save = st.toggle(
+            "Auto-save", value=settings.get("auto_save", True),
+            help="Salva automaticamente após cada alteração",
+        )
+        if auto_save != settings.get("auto_save"):
+            analysis_service.update_settings({"auto_save": auto_save})
+
+        if st.button("⚙️  Definições", width='stretch'):
+            on_settings_click()
+
+        st.markdown(
+            "<div style='font-size:.68rem;color:#334155;text-align:center;margin-top:12px;'>"
+            "Smart BI v1.0.0</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def render_secondary_sidebar(data_schema, on_add_visualization, visible=True):
+    """Legacy — mantido por compatibilidade, não usado no layout atual."""
+    pass
 
 
 def render_main_sidebar(
@@ -22,52 +175,12 @@ def render_main_sidebar(
     on_logout: Callable[[], None],
 ) -> Optional[str]:
     """
-    Render the main navigation sidebar.
-
-    Args:
-        user_id: Current user ID
-        dashboards: List of user's dashboards
-        current_dashboard_id: ID of currently selected dashboard
-        on_new_dashboard: Callback for new dashboard button
-        on_select_dashboard: Callback when selecting a dashboard
-        on_delete_dashboard: Callback when deleting a dashboard
-        on_settings_click: Callback for settings button
-        on_logout: Callback for logout button
-
-    Returns:
-        Selected dashboard ID if any
+    Render the main navigation sidebar (merge/auth version).
+    Returns selected dashboard ID if any.
     """
     selected_id = None
 
     with st.sidebar:
-        # Apply custom styles
-        st.markdown(
-            """
-            <style>
-                section[data-testid="stSidebar"] {
-                    background-color: #F8FAFC;
-                }
-                .sidebar-section-title {
-                    font-size: 11px;
-                    font-weight: 600;
-                    color: #64748B;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    margin: 16px 0 8px 0;
-                }
-                .dashboard-item {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 12px;
-                    margin-bottom: 8px;
-                    border: 1px solid #E2E8F0;
-                }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # Header and New Dashboard button
         st.markdown(
             """
             <div style='text-align: center; padding: 12px 0; margin-bottom: 12px;'>
@@ -85,18 +198,15 @@ def render_main_sidebar(
         ):
             on_new_dashboard()
 
-        # History section
         st.markdown(
             "<div class='sidebar-section-title'>Dashboards</div>",
             unsafe_allow_html=True,
         )
 
-        # History container
         history_container = st.container()
 
         with history_container:
             if dashboards:
-                # Sort by created_at descending
                 sorted_dashboards = sorted(
                     dashboards, key=lambda d: d.created_at, reverse=True
                 )
@@ -110,11 +220,9 @@ def render_main_sidebar(
                         if is_active:
                             st.markdown(
                                 f"""
-                                <div class='dashboard-item' style='border-color: #10B981; background: #F0FDF4;'>
-                                    <div style='font-weight: 600; color: #1E293B;'>▶ {dashboard.title}</div>
-                                    <div style='font-size: 11px; color: #64748B;'>
-                                        {len(dashboard.visualizations)} visualizações • {dashboard.created_at.strftime("%d/%m/%Y")}
-                                    </div>
+                                <div style='font-weight: 600; color: #1E293B;'>▶ {dashboard.title}</div>
+                                <div style='font-size: 11px; color: #64748B;'>
+                                    {len(dashboard.visualizations)} visualizações • {dashboard.created_at.strftime("%d/%m/%Y")}
                                 </div>
                                 """,
                                 unsafe_allow_html=True,
@@ -139,13 +247,8 @@ def render_main_sidebar(
             else:
                 st.markdown(
                     """
-                    <div style='
-                        text-align: center;
-                        padding: 20px;
-                        background: #F8FAFC;
-                        border-radius: 8px;
-                        border: 1px dashed #CBD5E1;
-                    '>
+                    <div style='text-align: center; padding: 20px; background: #F8FAFC;
+                                border-radius: 8px; border: 1px dashed #CBD5E1;'>
                         <p style='color: #64748B; margin: 0; font-size: 13px;'>
                             Nenhum dashboard ainda<br>
                             <span style='font-size: 11px;'>Clique em "Novo Dashboard" para começar</span>
@@ -155,7 +258,6 @@ def render_main_sidebar(
                     unsafe_allow_html=True,
                 )
 
-        # Settings and Logout at bottom
         st.markdown("---")
         col_settings, col_logout = st.columns(2)
 

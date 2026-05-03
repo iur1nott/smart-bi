@@ -25,24 +25,30 @@ logger = logging.getLogger(__name__)
 
 # Domain imports
 from domain.entities import (
+    Analysis,
+    ColumnType,
     Dashboard,
     File,
     FileSheet,
     User,
     Visualization,
     VisualizationConfig,
+    VisualizationType,
 )
+from domain.value_objects import ExportOptions
 from infrastructure.auth import JWTHandler
 
 # Infrastructure imports
+from infrastructure.chart_factory import ChartFactory
 from infrastructure.database import get_database, init_database
+from infrastructure.pdf_generator import PDFGenerator
 from infrastructure.repositories import (
     DashboardRepositoryImpl,
     FileRepositoryImpl,
     UserRepositoryImpl,
 )
 from infrastructure.storage import get_s3_client
-from presentation.canvas import render_canvas
+from presentation.canvas import render_canvas, render_slide_navigator
 from presentation.components import (
     render_export_dialog,
     render_header_bar,
@@ -53,12 +59,20 @@ from presentation.components import (
 
 # Presentation imports
 from presentation.login import render_login_page, render_user_menu
-from presentation.sidebar import render_file_uploader, render_main_sidebar
+from presentation.sidebar import (
+    render_file_uploader,
+    render_main_sidebar,
+    render_sidebar,
+)
 from presentation.widget_palette import (
     render_column_mapper,
     render_column_mapping,
     render_viz_config_dialog,
     render_widget_palette,
+)
+from presentation.widgets import (
+    render_data_preview,
+    render_widget_palette as render_widget_palette_v2,
 )
 
 # Use case imports
@@ -67,6 +81,12 @@ from use_cases.dashboard_service import DashboardService
 from use_cases.data_service import DataService
 from use_cases.export_service import ExportService
 from use_cases.file_service import FileService
+from utils.session_state import (
+    SessionStateManager,
+    init_session_state,
+    get_state,
+    set_state,
+)
 
 # Configure Streamlit page
 st.set_page_config(
@@ -184,7 +204,7 @@ st.markdown(
         box-shadow: 0 0 0 3px rgba(123,175,200,.18) !important;
     }
 
-    /* ── Expanders ─────────────────────────────────────────────────────────── */
+    /* ── Expanders (Filtros / Comentários) ─────────────────────────────────── */
     .streamlit-expanderHeader {
         font-weight: 600;
         font-size: 0.82rem;
@@ -346,8 +366,8 @@ class SmartXLApp:
             "data_cache": {},
             "sheet_cache": {},
             "current_file": None,
-            "dashboards_cache": None,  # Cache for dashboards list
-            "dashboards_cache_time": None,  # Timestamp for cache freshness
+            "dashboards_cache": None,
+            "dashboards_cache_time": None,
         }
 
         for key, value in defaults.items():
@@ -388,6 +408,8 @@ class SmartXLApp:
         self.dashboard_service = st.session_state.dashboard_service
         self.data_service = st.session_state.data_service
         self.export_service = st.session_state.export_service
+        self.chart_factory = ChartFactory()
+        self.pdf_generator = PDFGenerator()
 
     def run(self) -> None:
         """Run the main application."""
@@ -441,7 +463,6 @@ class SmartXLApp:
 
     def _render_sidebar(self) -> None:
         """Render the main sidebar."""
-        # Use cached dashboards or fetch fresh
         import time
 
         cache_age = (
@@ -490,7 +511,10 @@ class SmartXLApp:
             on_rename=self._on_rename,
         )
 
-        st.markdown("---")
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #E2E8F0;margin:8px 0 16px;'/>",
+            unsafe_allow_html=True,
+        )
 
         # Main content with widget palette
         main_col, widget_col = st.columns([4, 1])
@@ -588,16 +612,14 @@ class SmartXLApp:
         chart_images: Dict[str, bytes] = {}
         df = self.data_service.get_cached_sheet(st.session_state.current_sheet_id or "")
         if df is not None:
-            from infrastructure.chart_factory import ChartFactory
             from presentation.canvas import _VIZ_TYPE_MAP
-            cf = ChartFactory()
             for viz in dashboard.visualizations:
                 if viz.config and viz.viz_type not in ("table", "metric_card", "measures"):
                     try:
                         vt = _VIZ_TYPE_MAP.get(viz.viz_type)
                         if vt:
-                            fig = cf.create_chart(df, viz.config, vt)
-                            chart_images[viz.viz_id] = cf.export_figure_to_bytes(fig)
+                            fig = self.chart_factory.create_chart(df, viz.config, vt)
+                            chart_images[viz.viz_id] = self.chart_factory.export_figure_to_bytes(fig)
                     except Exception:
                         pass
 
@@ -611,7 +633,23 @@ class SmartXLApp:
             st.session_state.show_export = False
             st.rerun()
 
-    # Callback methods
+    def _handle_notifications(self) -> None:
+        """Handle and display notifications."""
+        notification = st.session_state.notification
+        if notification:
+            message, level = notification
+            if level == "success":
+                st.success(message)
+            elif level == "error":
+                st.error(message)
+            elif level == "warning":
+                st.warning(message)
+            else:
+                st.info(message)
+            st.session_state.notification = None
+
+    # ── Callback methods ──────────────────────────────────────────────────────
+
     def _on_new_dashboard(self) -> None:
         """Handle new dashboard button click."""
         st.session_state.show_uploader = True
@@ -798,7 +836,6 @@ class SmartXLApp:
 
     def _on_add_comment(self, viz_id: str, comment: str) -> None:
         """Handle comment addition."""
-        # Comments stored in visualization transient data
         dashboard = st.session_state.current_dashboard
         if not dashboard:
             return
@@ -962,7 +999,6 @@ class SmartXLApp:
 
     def _get_current_sheet(self) -> Optional[FileSheet]:
         """Get the current sheet being edited."""
-        # Get from current file
         if st.session_state.current_file:
             file = st.session_state.current_file
             if file.sheets:
@@ -974,20 +1010,209 @@ class SmartXLApp:
                 return file.sheets[0]
         return None
 
-    def _handle_notifications(self) -> None:
-        """Handle and display notifications."""
-        notification = st.session_state.notification
-        if notification:
-            message, level = notification
-            if level == "success":
-                st.success(message)
-            elif level == "error":
-                st.error(message)
-            elif level == "warning":
-                st.warning(message)
-            else:
-                st.info(message)
-            st.session_state.notification = None
+    # ── dev-03 methods (analysis-based features) ──────────────────────────────
+
+    def _apply_filters_to_df(self, df: pl.DataFrame, viz_id: str) -> pl.DataFrame:
+        """Aplica os filtros salvos em session_state para a visualização ao df."""
+        filters = st.session_state.get(f"filters_{viz_id}", [])
+        result = df
+        for f in filters:
+            col, op, val = f.get("col"), f.get("op"), f.get("val")
+            if not col or col not in result.columns:
+                continue
+            try:
+                c = pl.col(col)
+                dtype = result.schema.get(col)
+                numeric_types = (
+                    pl.Float64, pl.Float32, pl.Int64, pl.Int32,
+                    pl.Int16, pl.Int8, pl.UInt64, pl.UInt32,
+                )
+
+                def _cast(v):
+                    if dtype in (pl.Float64, pl.Float32):
+                        try:
+                            return float(v)
+                        except Exception:
+                            return v
+                    if dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32):
+                        try:
+                            return int(float(v))
+                        except Exception:
+                            return v
+                    return v
+
+                if op == "is_null":
+                    result = result.filter(c.is_null())
+                elif op == "is_not_null":
+                    result = result.filter(c.is_not_null())
+                elif op == "in":
+                    vals = [v.strip() for v in str(val).split(",") if v.strip()]
+                    result = result.filter(c.cast(pl.String).is_in(vals))
+                elif op == "contains":
+                    result = result.filter(c.cast(pl.String).str.contains(str(val), literal=True))
+                elif op == "starts_with":
+                    result = result.filter(c.cast(pl.String).str.starts_with(str(val)))
+                elif op == "eq":
+                    if isinstance(val, list):
+                        result = result.filter(c.cast(pl.String).is_in([str(v) for v in val]))
+                    else:
+                        result = result.filter(c == _cast(val))
+                elif op == "ne":
+                    result = result.filter(c != _cast(val))
+                elif op == "gt":
+                    result = result.filter(c > _cast(val))
+                elif op == "lt":
+                    result = result.filter(c < _cast(val))
+                elif op == "gte":
+                    result = result.filter(c >= _cast(val))
+                elif op == "lte":
+                    result = result.filter(c <= _cast(val))
+            except Exception:
+                pass
+        return result
+
+    def _on_export(self, analysis: Analysis, options: Dict[str, Any]) -> Optional[str]:
+        """Exporta a análise para PDF aplicando filtros e medidas como estão na tela."""
+        try:
+            df_base = self.data_service.get_cached_data(analysis.id)
+            if df_base is None:
+                st.error("Sem dados carregados para exportar.")
+                return None
+
+            # Aplica medidas calculadas
+            measures = getattr(analysis, "measures", None) or []
+            if measures:
+                try:
+                    df_base = self.data_service.compute_measures(df_base, measures)
+                except Exception:
+                    pass
+
+            chart_images: Dict[str, bytes] = {}
+            table_data: Dict[str, Dict] = {}
+            metric_data: Dict[str, Dict] = {}
+
+            for slide in analysis.slides:
+                for viz in slide.visualizations:
+                    if not viz.config:
+                        continue
+                    vtype = viz.config.visualization_type
+
+                    # Painel de medidas não vai para o PDF
+                    if vtype == VisualizationType.MEASURES:
+                        continue
+
+                    # Aplica filtros da sessão específicos desta viz
+                    df_viz = self._apply_filters_to_df(df_base, viz.id)
+
+                    if vtype == VisualizationType.TABLE:
+                        config = viz.config
+                        if config.y_columns:
+                            cols = [c for c in config.y_columns if c in df_viz.columns]
+                        elif config.x_column or config.y_column:
+                            cols = [
+                                c for c in [config.x_column, config.y_column, config.color_column]
+                                if c and c in df_viz.columns
+                            ]
+                        else:
+                            cols = list(df_viz.columns[:10])
+                        if cols:
+                            tdf = df_viz.select(cols).head(100)
+                            table_data[viz.id] = {
+                                "columns": cols,
+                                "data": tdf.to_pandas().to_dict(orient="records"),
+                                "title": config.title or "Tabela",
+                            }
+
+                    elif vtype == VisualizationType.METRIC_CARD:
+                        config = viz.config
+                        if config.y_column and config.y_column in df_viz.columns:
+                            col = df_viz[config.y_column]
+                            agg = config.aggregation or "sum"
+                            if agg == "mean":
+                                val = col.mean()
+                            elif agg == "count":
+                                val = col.count()
+                            elif agg == "min":
+                                val = col.min()
+                            elif agg == "max":
+                                val = col.max()
+                            else:
+                                val = col.sum()
+                            metric_data[viz.id] = {
+                                "value": val,
+                                "column": config.y_column,
+                                "agg": agg,
+                                "title": config.title or config.y_column,
+                            }
+
+                    else:
+                        try:
+                            img_bytes = self.chart_factory.render_to_image_bytes(
+                                df_viz, viz.config
+                            )
+                            chart_images[viz.id] = img_bytes
+                        except Exception as e:
+                            print(f"Erro ao gerar imagem para {viz.id}: {e}")
+
+            export_options = ExportOptions(
+                format=options.get("format", "pdf"),
+                paper_size=options.get("paper_size", "a4"),
+                orientation=options.get("orientation", "portrait"),
+                include_comments=options.get("include_comments", True),
+                header_text=options.get("header_text", ""),
+                footer_text=options.get("footer_text", ""),
+            )
+
+            output_path = self.pdf_generator.generate_pdf(
+                analysis,
+                export_options,
+                chart_images,
+                table_data=table_data,
+                metric_data=metric_data,
+            )
+            return output_path
+
+        except Exception as e:
+            st.error(f"Erro na exportação: {str(e)}")
+            return None
+
+    def _get_effective_schema(self, analysis):
+        """Retorna o DataSchema da análise enriquecido com as medidas como colunas NUMERIC."""
+        schema = analysis.data_schema
+        if not schema:
+            return schema
+        measures = getattr(analysis, "measures", None) or []
+        if not measures:
+            return schema
+        existing_names = {c.name for c in schema.columns}
+        extra = []
+        for m in measures:
+            name = (m.get("name") or "").strip()
+            if name and name not in existing_names:
+                from domain.entities import Column
+                extra.append(Column(name=name, data_type=ColumnType.NUMERIC))
+        if not extra:
+            return schema
+        from domain.entities import DataSchema
+        return DataSchema(
+            columns=list(schema.columns) + extra,
+            row_count=schema.row_count,
+            file_name=schema.file_name,
+            file_size=schema.file_size,
+        )
+
+    def _on_slide_change(self, slide_id: str) -> None:
+        """Handle slide change — stored in session_state for canvas to pick up."""
+        st.session_state["current_slide_id"] = slide_id
+        st.rerun()
+
+    def _on_add_slide(self) -> None:
+        """Handle adding a new slide."""
+        pass  # Implemented through analysis_service when available
+
+    def _on_delete_slide(self, slide_id: str) -> None:
+        """Handle slide deletion."""
+        pass  # Implemented through analysis_service when available
 
 
 def main():
