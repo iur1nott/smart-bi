@@ -313,6 +313,9 @@ st.markdown(
     #MainMenu { visibility: hidden; }
     footer    { visibility: hidden; }
     [data-testid="stToolbar"] { display: none; }
+
+    /* Keep the sidebar re-open button visible when sidebar is collapsed */
+    [data-testid="stSidebarCollapsedControl"] { visibility: visible !important; display: flex !important; }
 </style>
 """,
     unsafe_allow_html=True,
