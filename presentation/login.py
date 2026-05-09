@@ -58,7 +58,7 @@ def render_login_page(
         st.markdown(
             """
             <div class="login-header">
-                <h1>📊 SmartXL</h1>
+                <h1>📊 SmartBI</h1>
                 <p>Crie dashboards profissionais a partir dos seus dados</p>
             </div>
             """,
