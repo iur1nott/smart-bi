@@ -455,7 +455,7 @@ class DashboardBuilderApp:
         self.auth_service = st.session_state.auth_service
 
         user = st.session_state.get("user")
-        current_user_id = str(user.id) if user else None
+        current_user_id = str(user.user_id) if user else None
 
         # Build (or rebuild) analysis_service whenever:
         # - it hasn't been created yet, OR
@@ -796,7 +796,7 @@ class DashboardBuilderApp:
             # mapper confirmation step and is available for future cold-cache
             # reloads.  Fail gracefully — local-only mode still works.
             storage_path = None
-            user_id = getattr(st.session_state.get("user"), "id", "local")
+            user_id = getattr(st.session_state.get("user"), "user_id", "local")
             try:
                 from infrastructure.storage import get_s3_client
                 s3 = get_s3_client()
