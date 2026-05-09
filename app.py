@@ -312,10 +312,18 @@ st.markdown(
     /* ── Hide Streamlit chrome ──────────────────────────────────────────────── */
     #MainMenu { visibility: hidden; }
     footer    { visibility: hidden; }
-    [data-testid="stToolbar"] { display: none; }
 
-    /* Keep the sidebar re-open button visible when sidebar is collapsed */
-    [data-testid="stSidebarCollapsedControl"] { visibility: visible !important; display: flex !important; }
+    /* Use visibility:hidden instead of display:none so that descendant
+       overrides can still take effect (display:none removes the subtree
+       entirely, making !important on children useless). */
+    [data-testid="stToolbar"] { visibility: hidden; }
+
+    /* Keep the sidebar re-open arrow visible when the sidebar is collapsed.
+       It lives inside stToolbar so the parent must use visibility, not display. */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] * {
+        visibility: visible !important;
+    }
 </style>
 """,
     unsafe_allow_html=True,
