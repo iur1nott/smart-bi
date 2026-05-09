@@ -4,6 +4,7 @@ Follows Single Responsibility Principle - only handles data operations.
 """
 
 import io
+import os
 from typing import Dict, List, Any, Optional, Tuple
 import polars as pl
 from pathlib import Path
@@ -260,8 +261,27 @@ class DataService:
         return stats
 
     def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
-        """Get cached DataFrame for an analysis."""
-        return self._data_cache.get(analysis_id)
+        """
+        Return the DataFrame for an analysis.
+
+        Checks the in-memory cache first. On a cache miss (e.g. after an app
+        restart) it tries to reload from the companion Parquet file that
+        store_data() writes alongside the analysis JSON.
+        """
+        if analysis_id in self._data_cache:
+            return self._data_cache[analysis_id]
+
+        # Cold-cache recovery — look for a persisted Parquet snapshot
+        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
+        if os.path.exists(parquet_path):
+            try:
+                df = pl.read_parquet(parquet_path)
+                self._data_cache[analysis_id] = df
+                return df
+            except Exception:
+                pass
+
+        return None
 
     def clear_cache(self, analysis_id: Optional[str] = None):
         """Clear cached data for specific analysis or all."""
@@ -540,20 +560,48 @@ class DataService:
 
     def store_data(self, analysis_id: str, df: pl.DataFrame) -> None:
         """
-        Armazena o DataFrame processado no cache para ser utilizado
-        pelas visualizações da análise.
+        Armazena o DataFrame no cache em memória e persiste uma cópia em
+        Parquet em data/<analysis_id>.parquet.  O arquivo Parquet permite
+        recarregar os dados automaticamente após reinicialização do app,
+        sem exigir novo upload do arquivo XLSX.
         """
         if not hasattr(self, "_data_cache"):
             self._data_cache = {}
 
         self._data_cache[analysis_id] = df
 
+        # Persist so the data survives app restarts
+        os.makedirs("data", exist_ok=True)
+        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
+        try:
+            df.write_parquet(parquet_path)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Could not persist data for {analysis_id}: {e}"
+            )
+
     def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
         """
-        Recupera os dados armazenados para uma análise específica.
+        Recupera os dados para uma análise.  Verifica primeiro o cache em
+        memória; se não encontrar (ex.: após reinicialização do app), tenta
+        carregar do arquivo Parquet persistido por store_data().
         """
-        if hasattr(self, "_data_cache"):
-            return self._data_cache.get(analysis_id)
+        if not hasattr(self, "_data_cache"):
+            self._data_cache = {}
+
+        if analysis_id in self._data_cache:
+            return self._data_cache[analysis_id]
+
+        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
+        if os.path.exists(parquet_path):
+            try:
+                df = pl.read_parquet(parquet_path)
+                self._data_cache[analysis_id] = df
+                return df
+            except Exception:
+                pass
+
         return None
 
     def compute_measures(self, df: pl.DataFrame, measures: list) -> pl.DataFrame:
