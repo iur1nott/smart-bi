@@ -1,6 +1,12 @@
 """
 Analysis Repository Implementation - PostgreSQL-based analysis persistence.
-Implements the AnalysisRepository interface using SQLAlchemy.
+
+Contains two implementations:
+- AnalysisRepositoryImpl  — legacy ORM-based impl (kept for reference)
+- SupabaseAnalysisRepository — active impl that stores Analysis JSON in
+  the `analyses` table created by the create_analyses_table migration.
+  Implements the same save/load/delete/list_all interface as
+  FileAnalysisRepository so AnalysisService can use either without change.
 """
 
 from typing import List, Optional, Dict, Any
@@ -15,14 +21,19 @@ from domain.entities import (
     VisualizationConfig,
     DataSchema,
 )
-from domain.repositories import AnalysisRepository
 from infrastructure.database import Database, get_database
-from infrastructure.models import AnalysisModel
+
+try:
+    from infrastructure.models import AnalysisModel
+    from domain.repositories import AnalysisRepository as _DomainAnalysisRepository
+except ImportError:
+    AnalysisModel = None            # type: ignore
+    _DomainAnalysisRepository = object  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 
-class AnalysisRepositoryImpl(AnalysisRepository):
+class AnalysisRepositoryImpl(_DomainAnalysisRepository):
     """
     PostgreSQL implementation of the AnalysisRepository interface.
     Handles analysis persistence operations using SQLAlchemy ORM.
@@ -346,3 +357,141 @@ class AnalysisRepositoryImpl(AnalysisRepository):
             if data.get("updated_at")
             else datetime.now(),
         )
+
+
+# ── Active Supabase-backed implementation ────────────────────────────────────
+
+_repo_logger = logging.getLogger(__name__ + ".supabase")
+
+
+class SupabaseAnalysisRepository:
+    """
+    Stores Analysis objects as JSONB in the ``analyses`` Supabase table.
+
+    Implements the save / load / delete / list_all interface expected by
+    AnalysisService — identical to FileAnalysisRepository so the service
+    layer needs no changes.
+
+    ``storage_path`` holds the S3 path of the source XLSX so the data can
+    be reloaded after a cold-cache miss without asking the user to re-upload.
+    """
+
+    def __init__(self, user_id: str, database: Optional[Database] = None):
+        self._user_id = str(user_id)
+        self._db = database or get_database()
+
+    # ── private helpers ───────────────────────────────────────────────────────
+
+    def _row_to_analysis(self, row) -> Optional[Analysis]:
+        try:
+            data: dict = row.data if isinstance(row.data, dict) else {}
+            analysis = Analysis.from_dict(data)
+            if row.storage_path:
+                analysis.file_path = row.storage_path
+            return analysis
+        except Exception as e:
+            _repo_logger.error(f"Could not deserialise analysis: {e}")
+            return None
+
+    # ── AnalysisRepository interface ──────────────────────────────────────────
+
+    def save(self, analysis: Analysis) -> bool:
+        try:
+            from sqlalchemy import text
+            storage_path = getattr(analysis, "file_path", None) or None
+            with self._db.session_scope() as session:
+                session.execute(
+                    text("""
+                        INSERT INTO analyses
+                            (analysis_id, user_id, name, data, storage_path)
+                        VALUES (:aid, :uid, :name, :data::jsonb, :sp)
+                        ON CONFLICT (analysis_id) DO UPDATE SET
+                            name         = EXCLUDED.name,
+                            data         = EXCLUDED.data,
+                            storage_path = COALESCE(EXCLUDED.storage_path,
+                                                    analyses.storage_path),
+                            updated_at   = NOW()
+                    """),
+                    {
+                        "aid":  str(analysis.id),
+                        "uid":  self._user_id,
+                        "name": analysis.name,
+                        "data": json.dumps(analysis.to_dict()),
+                        "sp":   storage_path,
+                    },
+                )
+            return True
+        except Exception as e:
+            _repo_logger.error(f"Error saving analysis {analysis.id}: {e}")
+            return False
+
+    def load(self, analysis_id: str) -> Optional[Analysis]:
+        try:
+            from sqlalchemy import text
+            with self._db.session_scope() as session:
+                row = session.execute(
+                    text("""
+                        SELECT * FROM analyses
+                        WHERE analysis_id = :aid AND user_id = :uid
+                    """),
+                    {"aid": str(analysis_id), "uid": self._user_id},
+                ).fetchone()
+            return self._row_to_analysis(row) if row else None
+        except Exception as e:
+            _repo_logger.error(f"Error loading analysis {analysis_id}: {e}")
+            return None
+
+    def delete(self, analysis_id: str) -> bool:
+        try:
+            from sqlalchemy import text
+            with self._db.session_scope() as session:
+                session.execute(
+                    text("""
+                        DELETE FROM analyses
+                        WHERE analysis_id = :aid AND user_id = :uid
+                    """),
+                    {"aid": str(analysis_id), "uid": self._user_id},
+                )
+            return True
+        except Exception as e:
+            _repo_logger.error(f"Error deleting analysis {analysis_id}: {e}")
+            return False
+
+    def list_all(self) -> List[Analysis]:
+        try:
+            from sqlalchemy import text
+            with self._db.session_scope() as session:
+                rows = session.execute(
+                    text("""
+                        SELECT * FROM analyses
+                        WHERE user_id = :uid
+                        ORDER BY updated_at DESC
+                    """),
+                    {"uid": self._user_id},
+                ).fetchall()
+            result = []
+            for row in rows:
+                a = self._row_to_analysis(row)
+                if a:
+                    result.append(a)
+            return result
+        except Exception as e:
+            _repo_logger.error(f"Error listing analyses: {e}")
+            return []
+
+    def get_storage_path(self, analysis_id: str) -> Optional[str]:
+        """Return only the S3 storage_path (cheap query, no JSON deserialisation)."""
+        try:
+            from sqlalchemy import text
+            with self._db.session_scope() as session:
+                row = session.execute(
+                    text("""
+                        SELECT storage_path FROM analyses
+                        WHERE analysis_id = :aid AND user_id = :uid
+                    """),
+                    {"aid": str(analysis_id), "uid": self._user_id},
+                ).fetchone()
+            return row.storage_path if row else None
+        except Exception as e:
+            _repo_logger.error(f"Error fetching storage_path for {analysis_id}: {e}")
+            return None

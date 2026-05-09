@@ -438,8 +438,10 @@ class DashboardBuilderApp:
         re-running DB init (Base.metadata.create_all) on every button click.
         """
         if not st.session_state.get("_services_ready"):
+            db_ok = False
             try:
                 init_database()
+                db_ok = True
             except Exception as e:
                 st.warning(f"Database connection issue: {e}")
 
@@ -447,6 +449,7 @@ class DashboardBuilderApp:
             jwt_handler = JWTHandler()
 
             st.session_state.auth_service = AuthService(user_repo, None, jwt_handler)
+            st.session_state._db_auth_ok = db_ok
             st.session_state._services_ready = True
 
         self.auth_service = st.session_state.auth_service
@@ -456,12 +459,22 @@ class DashboardBuilderApp:
         os.makedirs(data_dir, exist_ok=True)
 
         if "analysis_service" not in st.session_state:
-            repository = FileAnalysisRepository(data_dir)
+            # Use Supabase-backed repo when a logged-in user is available,
+            # fall back to local JSON files otherwise (local dev / no DB).
+            user = st.session_state.get("user")
+            if user and st.session_state.get("_db_auth_ok"):
+                from infrastructure.repositories.analysis_repository import (
+                    SupabaseAnalysisRepository,
+                )
+                repository = SupabaseAnalysisRepository(user_id=str(user.id))
+            else:
+                repository = FileAnalysisRepository(data_dir)
+
             st.session_state.analysis_service = AnalysisService(repository)
             st.session_state.analysis_service.initialize_session(
                 get_state("session_data")
             )
-            # Restore previously saved analyses from disk into the session
+            # Restore previously saved analyses into the in-memory session
             saved = st.session_state.analysis_service.load_saved_analyses()
             session = st.session_state.analysis_service.get_session()
             existing_ids = {a.id for a in session.analyses}
@@ -655,7 +668,13 @@ class DashboardBuilderApp:
                 from domain.entities import DataSchema
                 analysis.data_schema = DataSchema.from_polars(df_final)
 
-                # Salvar dados no cache e persistir a análise com o novo schema
+                # Attach S3 storage_path so the repository can reload the
+                # XLSX automatically on future cold-cache misses.
+                storage_path = get_state("temp_storage_path")
+                if storage_path:
+                    analysis.file_path = storage_path
+
+                # Salvar dados no cache + Parquet local + Supabase
                 self.data_service.store_data(analysis.id, df_final)
                 self.analysis_service.save_current_analysis()
 
@@ -663,6 +682,7 @@ class DashboardBuilderApp:
                 set_state("show_column_mapper", False)
                 set_state("temp_df", None)
                 set_state("temp_schema", None)
+                set_state("temp_storage_path", None)
                 st.success("Dados validados! Os gráficos foram liberados.")
                 st.rerun()
 
@@ -759,25 +779,59 @@ class DashboardBuilderApp:
         set_state("show_uploader", True)
 
     def _process_uploaded_file(self, uploaded_file, name: str) -> None:
-        try: # <--- O try começa aqui
+        try:
             file_bytes = uploaded_file.getvalue()
             schema, df = self.data_service.load_excel_from_bytes(
                 file_bytes, uploaded_file.name, "temp_id"
             )
 
+            # Upload to S3 immediately so the file survives after the column
+            # mapper confirmation step and is available for future cold-cache
+            # reloads.  Fail gracefully — local-only mode still works.
+            storage_path = None
+            user_id = getattr(st.session_state.get("user"), "id", "local")
+            try:
+                from infrastructure.storage import get_s3_client
+                s3 = get_s3_client()
+                storage_path = s3.upload_file(
+                    file_data=file_bytes,
+                    filename=uploaded_file.name,
+                    user_id=str(user_id),
+                )
+            except Exception as s3_err:
+                import logging
+                logging.getLogger(__name__).warning(f"S3 upload skipped: {s3_err}")
+
             set_state("temp_df", df)
             set_state("temp_schema", schema)
+            set_state("temp_storage_path", storage_path)
             set_state("show_column_mapper", True)
             set_state("pending_upload_name", name)
             set_state("pending_file_name", uploaded_file.name)
 
             st.rerun()
-        except Exception as e: # <--- O except deve estar alinhado com o try
+        except Exception as e:
             st.error(f"Erro ao processar arquivo: {str(e)}")
 
     def _on_select_analysis(self, analysis_id: str) -> None:
-        """Handle analysis selection."""
+        """Handle analysis selection; pre-warms the data cache from S3 if needed."""
         self.analysis_service.set_current_analysis(analysis_id)
+
+        # If data not in any local cache, try to reload from S3 immediately so
+        # the canvas doesn't show "No data loaded" on the first render.
+        if self.data_service.get_cached_data(analysis_id) is None:
+            storage_path = None
+            repo = self.analysis_service.repository
+            if hasattr(repo, "get_storage_path"):
+                storage_path = repo.get_storage_path(analysis_id)
+            elif hasattr(repo, "_db"):
+                # FileAnalysisRepository — check analysis.file_path directly
+                analysis = self.analysis_service.get_current_analysis()
+                if analysis:
+                    storage_path = getattr(analysis, "file_path", None)
+            if storage_path:
+                self.data_service.get_cached_data(analysis_id, storage_path=storage_path)
+
         st.rerun()
 
     def _on_save_settings(self, settings: Dict[str, Any]) -> None:

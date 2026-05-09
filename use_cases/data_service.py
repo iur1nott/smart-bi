@@ -260,18 +260,24 @@ class DataService:
 
         return stats
 
-    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
+    def get_cached_data(
+        self,
+        analysis_id: str,
+        storage_path: Optional[str] = None,
+    ) -> Optional[pl.DataFrame]:
         """
         Return the DataFrame for an analysis.
 
-        Checks the in-memory cache first. On a cache miss (e.g. after an app
-        restart) it tries to reload from the companion Parquet file that
-        store_data() writes alongside the analysis JSON.
+        Priority:
+        1. In-memory dict (fastest — same process)
+        2. Local Parquet snapshot (survives process restarts on same machine)
+        3. S3 download via ``storage_path`` (source of truth — works on any
+           machine / Streamlit Cloud cold start)
         """
         if analysis_id in self._data_cache:
             return self._data_cache[analysis_id]
 
-        # Cold-cache recovery — look for a persisted Parquet snapshot
+        # L2 — local Parquet cache
         parquet_path = os.path.join("data", f"{analysis_id}.parquet")
         if os.path.exists(parquet_path):
             try:
@@ -281,7 +287,35 @@ class DataService:
             except Exception:
                 pass
 
+        # L3 — download from S3 and rebuild local cache
+        if storage_path:
+            df = self._load_from_s3(storage_path, analysis_id)
+            if df is not None:
+                return df
+
         return None
+
+    def _load_from_s3(
+        self, storage_path: str, analysis_id: str
+    ) -> Optional[pl.DataFrame]:
+        """Download the XLSX from S3, parse it, and populate all cache layers."""
+        try:
+            from infrastructure.storage import get_s3_client
+            s3 = get_s3_client()
+            file_bytes = s3.download_file(storage_path)
+            if not file_bytes:
+                return None
+            filename = storage_path.rsplit("/", 1)[-1]
+            _, df = self.load_excel_from_bytes(file_bytes, filename, analysis_id)
+            if df is not None:
+                self.store_data(analysis_id, df)  # also writes Parquet
+            return df
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"S3 reload failed for {analysis_id}: {e}"
+            )
+            return None
 
     def clear_cache(self, analysis_id: Optional[str] = None):
         """Clear cached data for specific analysis or all."""
