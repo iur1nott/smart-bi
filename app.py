@@ -337,36 +337,66 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Custom sidebar open button — watches for collapsed state and shows/hides itself
-st.markdown(
-    """
-<button id="_sidebar_open_btn" title="Abrir barra lateral" onclick="
-    var btn = window.parent.document.querySelector('[data-testid=\\"stSidebarCollapsedControl\\"] button')
-        || window.parent.document.querySelector('[data-testid=\\"stSidebarNavCollapseIcon\\"]')
-        || window.parent.document.querySelector('section[data-testid=\\"stSidebar\\"] button');
-    if (btn) btn.click();
-">☰</button>
+import streamlit.components.v1 as _components
 
+# Inject sidebar toggle button via an invisible iframe component.
+# st.markdown strips <script> tags; st.components.v1.html runs inside an
+# iframe with full script support and can write into window.parent.document.
+_components.html(
+    """
 <script>
-(function() {
-    function updateBtn() {
-        var doc   = window.parent.document;
-        var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
-        var btn   = document.getElementById('_sidebar_open_btn');
-        if (!btn) return;
-        if (!sidebar) { btn.style.display = 'none'; return; }
-        // Streamlit marks the sidebar as collapsed with aria-expanded="false"
-        var collapsed = sidebar.getAttribute('aria-expanded') === 'false'
-                     || sidebar.offsetWidth < 10;
+(function () {
+    var p = window.parent.document;
+
+    // Remove any stale instance from a previous rerun
+    var old = p.getElementById('_sb_open_btn');
+    if (old) old.remove();
+
+    // Create the ☰ button and inject it into the parent page
+    var btn = p.createElement('button');
+    btn.id = '_sb_open_btn';
+    btn.title = 'Abrir barra lateral';
+    btn.textContent = '\\u2630';          // ☰
+    btn.style.cssText = [
+        'display:none',
+        'position:fixed',
+        'top:0.6rem',
+        'left:0.6rem',
+        'z-index:999999',
+        'background:#2E2C2A',
+        'color:#EDE9E3',
+        'border:1px solid rgba(255,255,255,0.15)',
+        'border-radius:6px',
+        'padding:5px 10px',
+        'font-size:1.1rem',
+        'cursor:pointer',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.4)',
+    ].join(';');
+    btn.onmouseover = function () { this.style.background = '#3D3B38'; };
+    btn.onmouseout  = function () { this.style.background = '#2E2C2A'; };
+    btn.onclick = function () {
+        // Try the known Streamlit collapsed-control selectors in order
+        var toggle =
+            p.querySelector('[data-testid="stSidebarCollapsedControl"] button') ||
+            p.querySelector('[data-testid="stSidebarNavCollapseIcon"]')          ||
+            p.querySelector('section[data-testid="stSidebar"] button');
+        if (toggle) toggle.click();
+    };
+    p.body.appendChild(btn);
+
+    // Poll the sidebar width every 300 ms and show/hide our button
+    setInterval(function () {
+        var sidebar = p.querySelector('section[data-testid="stSidebar"]');
+        if (!sidebar) return;
+        var collapsed = sidebar.offsetWidth < 10 ||
+                        sidebar.getAttribute('aria-expanded') === 'false';
         btn.style.display = collapsed ? 'block' : 'none';
-    }
-    // Poll every 300 ms (cheap — just reads one attribute)
-    setInterval(updateBtn, 300);
-    updateBtn();
-})();
+    }, 300);
+}());
 </script>
 """,
-    unsafe_allow_html=True,
+    height=0,
+    scrolling=False,
 )
 
 
