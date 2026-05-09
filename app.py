@@ -312,19 +312,59 @@ st.markdown(
     /* ── Hide Streamlit chrome ──────────────────────────────────────────────── */
     #MainMenu { visibility: hidden; }
     footer    { visibility: hidden; }
+    [data-testid="stToolbar"] { display: none; }
 
-    /* Use visibility:hidden instead of display:none so that descendant
-       overrides can still take effect (display:none removes the subtree
-       entirely, making !important on children useless). */
-    [data-testid="stToolbar"] { visibility: hidden; }
-
-    /* Keep the sidebar re-open arrow visible when the sidebar is collapsed.
-       It lives inside stToolbar so the parent must use visibility, not display. */
-    [data-testid="stSidebarCollapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] * {
-        visibility: visible !important;
+    /* ── Custom sidebar open button ─────────────────────────────────────────── */
+    #_sidebar_open_btn {
+        display: none;
+        position: fixed;
+        top: 0.6rem;
+        left: 0.6rem;
+        z-index: 999999;
+        background: #2E2C2A;
+        color: #EDE9E3;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        transition: background .15s;
     }
+    #_sidebar_open_btn:hover { background: #3D3B38; }
 </style>
+""",
+    unsafe_allow_html=True,
+)
+
+# Custom sidebar open button — watches for collapsed state and shows/hides itself
+st.markdown(
+    """
+<button id="_sidebar_open_btn" title="Abrir barra lateral" onclick="
+    var btn = window.parent.document.querySelector('[data-testid=\\"stSidebarCollapsedControl\\"] button')
+        || window.parent.document.querySelector('[data-testid=\\"stSidebarNavCollapseIcon\\"]')
+        || window.parent.document.querySelector('section[data-testid=\\"stSidebar\\"] button');
+    if (btn) btn.click();
+">☰</button>
+
+<script>
+(function() {
+    function updateBtn() {
+        var doc   = window.parent.document;
+        var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
+        var btn   = document.getElementById('_sidebar_open_btn');
+        if (!btn) return;
+        if (!sidebar) { btn.style.display = 'none'; return; }
+        // Streamlit marks the sidebar as collapsed with aria-expanded="false"
+        var collapsed = sidebar.getAttribute('aria-expanded') === 'false'
+                     || sidebar.offsetWidth < 10;
+        btn.style.display = collapsed ? 'block' : 'none';
+    }
+    // Poll every 300 ms (cheap — just reads one attribute)
+    setInterval(updateBtn, 300);
+    updateBtn();
+})();
+</script>
 """,
     unsafe_allow_html=True,
 )
