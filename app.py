@@ -454,25 +454,35 @@ class DashboardBuilderApp:
 
         self.auth_service = st.session_state.auth_service
 
-        if "analysis_service" not in st.session_state:
-            user = st.session_state.get("user")
+        user = st.session_state.get("user")
+        current_user_id = str(user.id) if user else None
+
+        # Build (or rebuild) analysis_service whenever:
+        # - it hasn't been created yet, OR
+        # - the logged-in user changed (e.g. after login the pre-login
+        #   "anonymous" service is still cached and must be replaced)
+        cached_uid = st.session_state.get("_analysis_service_user_id")
+        if "analysis_service" not in st.session_state or cached_uid != current_user_id:
             from infrastructure.repositories.analysis_repository import (
                 SupabaseAnalysisRepository,
             )
-            user_id = str(user.id) if user else "anonymous"
-            repository = SupabaseAnalysisRepository(user_id=user_id)
+            # Only connect to Supabase when we have a real UUID user_id.
+            # Without a user, analyses are ephemeral (in-memory only).
+            repository = SupabaseAnalysisRepository(user_id=current_user_id or "")
 
             st.session_state.analysis_service = AnalysisService(repository)
+            st.session_state._analysis_service_user_id = current_user_id
             st.session_state.analysis_service.initialize_session(
                 get_state("session_data")
             )
-            # Load the user's analyses from Supabase into the in-memory session
-            saved = repository.list_all()
-            session = st.session_state.analysis_service.get_session()
-            existing_ids = {a.id for a in session.analyses}
-            for analysis in saved:
-                if analysis.id not in existing_ids:
-                    session.analyses.append(analysis)
+            # Hydrate the in-memory session from Supabase
+            if current_user_id:
+                saved = repository.list_all()
+                session = st.session_state.analysis_service.get_session()
+                existing_ids = {a.id for a in session.analyses}
+                for analysis in saved:
+                    if analysis.id not in existing_ids:
+                        session.analyses.append(analysis)
 
         if "data_service" not in st.session_state:
             st.session_state.data_service = DataService()
@@ -504,6 +514,11 @@ class DashboardBuilderApp:
 
         def on_login_success(user: User, session: Any) -> None:
             st.session_state.user = user
+            # Force analysis_service to be recreated with the real user_id.
+            # It was built before login with user_id="anonymous", so every
+            # save/load was a no-op.  Clearing it here causes _init_services
+            # to rebuild it with the authenticated user on the next rerun.
+            st.session_state.pop("analysis_service", None)
 
         render_login_page(self.auth_service, on_login_success)
 
