@@ -268,37 +268,21 @@ class DataService:
         """
         Return the DataFrame for an analysis.
 
-        Priority:
-        1. In-memory dict (fastest — same process)
-        2. Local Parquet snapshot (survives process restarts on same machine)
-        3. S3 download via ``storage_path`` (source of truth — works on any
-           machine / Streamlit Cloud cold start)
+        L1 — in-memory dict (same process, zero latency).
+        On miss, download from Supabase S3 using storage_path (source of truth).
         """
         if analysis_id in self._data_cache:
             return self._data_cache[analysis_id]
 
-        # L2 — local Parquet cache
-        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
-        if os.path.exists(parquet_path):
-            try:
-                df = pl.read_parquet(parquet_path)
-                self._data_cache[analysis_id] = df
-                return df
-            except Exception:
-                pass
-
-        # L3 — download from S3 and rebuild local cache
         if storage_path:
-            df = self._load_from_s3(storage_path, analysis_id)
-            if df is not None:
-                return df
+            return self._load_from_s3(storage_path, analysis_id)
 
         return None
 
     def _load_from_s3(
         self, storage_path: str, analysis_id: str
     ) -> Optional[pl.DataFrame]:
-        """Download the XLSX from S3, parse it, and populate all cache layers."""
+        """Download the XLSX from Supabase S3, parse it, and warm the memory cache."""
         try:
             from infrastructure.storage import get_s3_client
             s3 = get_s3_client()
@@ -308,7 +292,7 @@ class DataService:
             filename = storage_path.rsplit("/", 1)[-1]
             _, df = self.load_excel_from_bytes(file_bytes, filename, analysis_id)
             if df is not None:
-                self.store_data(analysis_id, df)  # also writes Parquet
+                self._data_cache[analysis_id] = df
             return df
         except Exception as e:
             import logging
@@ -593,49 +577,21 @@ class DataService:
         return df.rename({old: new for old, new in zip(df.columns, new_names)})
 
     def store_data(self, analysis_id: str, df: pl.DataFrame) -> None:
-        """
-        Armazena o DataFrame no cache em memória e persiste uma cópia em
-        Parquet em data/<analysis_id>.parquet.  O arquivo Parquet permite
-        recarregar os dados automaticamente após reinicialização do app,
-        sem exigir novo upload do arquivo XLSX.
-        """
+        """Store DataFrame in the in-memory cache (L1 only — S3 is the source of truth)."""
         if not hasattr(self, "_data_cache"):
             self._data_cache = {}
-
         self._data_cache[analysis_id] = df
 
-        # Persist so the data survives app restarts
-        os.makedirs("data", exist_ok=True)
-        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
-        try:
-            df.write_parquet(parquet_path)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Could not persist data for {analysis_id}: {e}"
-            )
-
-    def get_cached_data(self, analysis_id: str) -> Optional[pl.DataFrame]:
-        """
-        Recupera os dados para uma análise.  Verifica primeiro o cache em
-        memória; se não encontrar (ex.: após reinicialização do app), tenta
-        carregar do arquivo Parquet persistido por store_data().
-        """
+    def get_cached_data(  # noqa: D401  (second definition — alias to the primary above)
+        self, analysis_id: str, storage_path: Optional[str] = None
+    ) -> Optional[pl.DataFrame]:
+        """L1 cache lookup; falls back to S3 download if storage_path is provided."""
         if not hasattr(self, "_data_cache"):
             self._data_cache = {}
-
         if analysis_id in self._data_cache:
             return self._data_cache[analysis_id]
-
-        parquet_path = os.path.join("data", f"{analysis_id}.parquet")
-        if os.path.exists(parquet_path):
-            try:
-                df = pl.read_parquet(parquet_path)
-                self._data_cache[analysis_id] = df
-                return df
-            except Exception:
-                pass
-
+        if storage_path:
+            return self._load_from_s3(storage_path, analysis_id)
         return None
 
     def compute_measures(self, df: pl.DataFrame, measures: list) -> pl.DataFrame:

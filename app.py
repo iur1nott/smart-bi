@@ -454,28 +454,20 @@ class DashboardBuilderApp:
 
         self.auth_service = st.session_state.auth_service
 
-        # Always set up dev-03 services if not already present
-        data_dir = "data"
-        os.makedirs(data_dir, exist_ok=True)
-
         if "analysis_service" not in st.session_state:
-            # Use Supabase-backed repo when a logged-in user is available,
-            # fall back to local JSON files otherwise (local dev / no DB).
             user = st.session_state.get("user")
-            if user and st.session_state.get("_db_auth_ok"):
-                from infrastructure.repositories.analysis_repository import (
-                    SupabaseAnalysisRepository,
-                )
-                repository = SupabaseAnalysisRepository(user_id=str(user.id))
-            else:
-                repository = FileAnalysisRepository(data_dir)
+            from infrastructure.repositories.analysis_repository import (
+                SupabaseAnalysisRepository,
+            )
+            user_id = str(user.id) if user else "anonymous"
+            repository = SupabaseAnalysisRepository(user_id=user_id)
 
             st.session_state.analysis_service = AnalysisService(repository)
             st.session_state.analysis_service.initialize_session(
                 get_state("session_data")
             )
-            # Restore previously saved analyses into the in-memory session
-            saved = st.session_state.analysis_service.load_saved_analyses()
+            # Load the user's analyses from Supabase into the in-memory session
+            saved = repository.list_all()
             session = st.session_state.analysis_service.get_session()
             existing_ids = {a.id for a in session.analyses}
             for analysis in saved:
