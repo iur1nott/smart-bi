@@ -382,6 +382,15 @@ class SupabaseAnalysisRepository:
 
     # ── private helpers ───────────────────────────────────────────────────────
 
+    def _valid(self) -> bool:
+        """Return False when user_id is not a real UUID (no-op guard)."""
+        import uuid as _uuid
+        try:
+            _uuid.UUID(self._user_id)
+            return True
+        except ValueError:
+            return False
+
     def _row_to_analysis(self, row) -> Optional[Analysis]:
         try:
             data: dict = row.data if isinstance(row.data, dict) else {}
@@ -396,15 +405,26 @@ class SupabaseAnalysisRepository:
     # ── AnalysisRepository interface ──────────────────────────────────────────
 
     def save(self, analysis: Analysis) -> bool:
+        if not self._valid():
+            return False
         try:
             from sqlalchemy import text
+            # Note: avoid `:name::jsonb` — SQLAlchemy's text() parser treats
+            # the `::` PostgreSQL cast operator as part of the bind-param token,
+            # producing a syntax error.  Use CAST(:name AS jsonb) instead.
             storage_path = getattr(analysis, "file_path", None) or None
             with self._db.session_scope() as session:
                 session.execute(
                     text("""
                         INSERT INTO analyses
                             (analysis_id, user_id, name, data, storage_path)
-                        VALUES (:aid, :uid, :name, :data::jsonb, :sp)
+                        VALUES (
+                            :aid,
+                            CAST(:uid  AS uuid),
+                            :name,
+                            CAST(:data AS jsonb),
+                            :sp
+                        )
                         ON CONFLICT (analysis_id) DO UPDATE SET
                             name         = EXCLUDED.name,
                             data         = EXCLUDED.data,
@@ -426,13 +446,16 @@ class SupabaseAnalysisRepository:
             return False
 
     def load(self, analysis_id: str) -> Optional[Analysis]:
+        if not self._valid():
+            return None
         try:
             from sqlalchemy import text
             with self._db.session_scope() as session:
                 row = session.execute(
                     text("""
                         SELECT * FROM analyses
-                        WHERE analysis_id = :aid AND user_id = :uid
+                        WHERE analysis_id = :aid
+                          AND user_id = CAST(:uid AS uuid)
                     """),
                     {"aid": str(analysis_id), "uid": self._user_id},
                 ).fetchone()
@@ -442,13 +465,16 @@ class SupabaseAnalysisRepository:
             return None
 
     def delete(self, analysis_id: str) -> bool:
+        if not self._valid():
+            return False
         try:
             from sqlalchemy import text
             with self._db.session_scope() as session:
                 session.execute(
                     text("""
                         DELETE FROM analyses
-                        WHERE analysis_id = :aid AND user_id = :uid
+                        WHERE analysis_id = :aid
+                          AND user_id = CAST(:uid AS uuid)
                     """),
                     {"aid": str(analysis_id), "uid": self._user_id},
                 )
@@ -458,13 +484,15 @@ class SupabaseAnalysisRepository:
             return False
 
     def list_all(self) -> List[Analysis]:
+        if not self._valid():
+            return []
         try:
             from sqlalchemy import text
             with self._db.session_scope() as session:
                 rows = session.execute(
                     text("""
                         SELECT * FROM analyses
-                        WHERE user_id = :uid
+                        WHERE user_id = CAST(:uid AS uuid)
                         ORDER BY updated_at DESC
                     """),
                     {"uid": self._user_id},
