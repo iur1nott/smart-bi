@@ -86,10 +86,16 @@ st.markdown(
     """
 <style>
     /* ── Hide Streamlit Cloud host icon / toolbar ───────────────────────────── */
-    [data-testid="stToolbar"]          {display: none !important;}
-    [data-testid="stDecoration"]       {display: none !important;}
-    #MainMenu                          {display: none !important;}
-    footer                             {display: none !important;}
+    [data-testid="stToolbar"]              {display: none !important;}
+    [data-testid="stDecoration"]           {display: none !important;}
+    [data-testid="stHeader"]               {display: none !important;}
+    [data-testid="stFooter"]               {display: none !important;}
+    [data-testid="stToolbarActionButton"]  {display: none !important;}
+    #MainMenu                              {display: none !important;}
+    header                                 {display: none !important;}
+    footer                                 {display: none !important;}
+    [class*="viewerBadge"]                 {display: none !important;}
+    [class*="styles_viewerBadge"]          {display: none !important;}
 
     /* ── Design tokens — pastel palette ────────────────────────────────────── */
     :root {
