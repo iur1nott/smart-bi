@@ -139,6 +139,17 @@ class ChartFactory:
             draw.line([(cx0, cy0), (cx0, cy1)], fill=GRAY_AXIS, width=1)
             draw.line([(cx0, cy1), (cx1, cy1)], fill=GRAY_AXIS, width=1)
 
+        def draw_rotated_text(text, cx, cy, angle=-45, font=None, fill=(71, 85, 105)):
+            """Draw text rotated by `angle` degrees, centered at (cx, cy)."""
+            font = font or font_sm
+            tmp = Image.new("RGBA", (200, 20), (0, 0, 0, 0))
+            tmp_draw = ImageDraw.Draw(tmp)
+            tmp_draw.text((0, 0), text, font=font, fill=fill)
+            rotated = tmp.rotate(angle, expand=True)
+            rx = int(cx - rotated.width / 2)
+            ry = int(cy)
+            img.paste(rotated, (rx, ry), rotated)
+
         def draw_y_grid(min_v, max_v, n=5):
             rng = max_v - min_v or 1
             for i in range(n + 1):
@@ -169,6 +180,7 @@ class ChartFactory:
                         draw_axes()
                         draw_y_grid(min_v, max_v)
                         n_cats  = len(cats)
+                        rotate_labels = n_cats > 6
                         group_w = cw / max(n_cats, 1)
                         bar_w   = group_w * 0.6 / max(len(y_cols), 1)
                         for ci, cat in enumerate(cats):
@@ -181,9 +193,12 @@ class ChartFactory:
                                     [(bx, cy1 - bh), (bx + bar_w - 1, cy1)],
                                     fill=palette_color(si),
                                 )
-                            lbl = fmt_label(cat, 8)
+                            lbl = fmt_label(cat, 12 if not rotate_labels else 14)
                             lx  = x_base + bar_w * len(y_cols) / 2
-                            draw.text((lx, cy1 + 4), lbl, fill=GRAY_LABEL, font=font_sm, anchor="mt")
+                            if rotate_labels:
+                                draw_rotated_text(lbl, lx, cy1 + 4, angle=45, font=font_sm, fill=GRAY_LABEL)
+                            else:
+                                draw.text((lx, cy1 + 4), lbl, fill=GRAY_LABEL, font=font_sm, anchor="mt")
 
                     else:  # BAR_CHART horizontal
                         n_cats = len(cats)
