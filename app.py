@@ -617,10 +617,10 @@ class DashboardBuilderApp:
                     "nome",
                     value=current_analysis.name,
                     label_visibility="collapsed",
-                    key="analysis_name_input",
+                    key=f"analysis_name_{current_analysis.id}",
                     placeholder="Nome da análise…",
                 )
-                if new_name != current_analysis.name:
+                if new_name and new_name != current_analysis.name:
                     self.analysis_service.rename_analysis(current_analysis.id, new_name)
                     st.rerun()
             else:

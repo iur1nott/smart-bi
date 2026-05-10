@@ -49,12 +49,16 @@ def render_sidebar(
                     "padding:12px;margin-top:8px;border:1px solid rgba(255,255,255,.1)'>",
                     unsafe_allow_html=True,
                 )
-                analysis_name = st.text_input(
-                    "Nome", value="Nova Análise", label_visibility="collapsed",
-                    placeholder="Nome da análise…",
-                )
                 uploaded_file = st.file_uploader(
                     "Excel", type=["xlsx", "xls", "csv"], label_visibility="collapsed"
+                )
+                default_name = (
+                    uploaded_file.name.rsplit(".", 1)[0] if uploaded_file else "Nova Análise"
+                )
+                analysis_name = st.text_input(
+                    "Nome", value=default_name, label_visibility="collapsed",
+                    placeholder="Nome da análise…",
+                    key=f"upload_name_{uploaded_file.name if uploaded_file else 'empty'}",
                 )
                 if uploaded_file:
                     c1, c2 = st.columns(2)
