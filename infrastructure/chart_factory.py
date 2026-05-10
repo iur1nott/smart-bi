@@ -542,12 +542,15 @@ class ChartFactory:
                 )
             )
 
+        n_cats = len(df_plot)
         fig.update_layout(
             barmode="group",
             xaxis_title=config.x_column,
             yaxis_title="Valor",
             hovermode="x unified",
         )
+        if n_cats > 6:
+            fig.update_xaxes(tickangle=-45)
         return fig
 
     def _create_bar_chart(

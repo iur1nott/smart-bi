@@ -1218,8 +1218,9 @@ class DashboardBuilderApp:
 
                     else:
                         try:
-                            img_bytes = self.chart_factory.render_to_image_bytes(
-                                df_viz, viz.config
+                            fig = self.chart_factory.create_chart(df_viz, viz.config)
+                            img_bytes = self.chart_factory.export_figure_to_bytes(
+                                fig, format="png", scale=2.0
                             )
                             chart_images[viz.id] = img_bytes
                         except Exception as e:
