@@ -443,7 +443,11 @@ class ChartFactory:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _colors(self, config: VisualizationConfig) -> list:
-        return self.COLOR_SCHEMES.get(config.color_scheme, self.COLOR_SCHEMES["default"])
+        cs = config.color_scheme or "default"
+        if cs.startswith("#"):
+            default = self.COLOR_SCHEMES["default"]
+            return [cs] + [c for c in default if c.upper() != cs.upper()]
+        return self.COLOR_SCHEMES.get(cs, self.COLOR_SCHEMES["default"])
 
     def _agg_expr(self, col: str, agg: str) -> pl.Expr:
         return {

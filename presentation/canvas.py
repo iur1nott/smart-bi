@@ -496,6 +496,7 @@ def render_visualization(
                 if st.button("✏️", key=f"edit_{viz.id}", help="Configurar"):
                     st.session_state.editing_viz_id = viz.id
                     st.session_state.editing_slide_id = slide_id
+                    st.rerun()
             with btn_cols[1]:
                 if st.button("🗑", key=f"delete_{viz.id}", help="Excluir"):
                     on_delete(slide_id, viz.id)

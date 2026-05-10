@@ -22,9 +22,42 @@ _AGG_OPTIONS: dict = {
     "max":   "Máximo",
 }
 
+_NAMED_COLORS: dict = {
+    "Azul":          "#636EFA",
+    "Vermelho":      "#EF553B",
+    "Verde":         "#00CC96",
+    "Laranja":       "#FFA15A",
+    "Roxo":          "#AB63FA",
+    "Ciano":         "#19D3F3",
+    "Rosa":          "#FF6692",
+    "Amarelo":       "#FFD700",
+    "Turquesa":      "#00CED1",
+    "Coral":         "#FF7F50",
+    "Azul Escuro":   "#003F88",
+    "Verde Escuro":  "#006400",
+    "Marrom":        "#8B4513",
+    "Cinza":         "#7F7F7F",
+    "Dourado":       "#DAA520",
+}
+
+# mapeamento reverso hex→nome para restaurar seleção salva
+_COLOR_HEX_TO_NAME: dict = {v: k for k, v in _NAMED_COLORS.items()}
+
+# mantido para compatibilidade com configs antigas que usam nome de paleta
 _COLOR_SCHEMES: list = [
     "default", "pastel", "dark", "vivid", "safe", "d3", "set1", "set2"
 ]
+
+
+def _color_selectbox(key: str, existing_scheme: str | None) -> str:
+    """Selectbox de cor por nome; devolve o hex value."""
+    names = list(_NAMED_COLORS.keys())
+    # tenta encontrar nome correspondente ao valor salvo
+    current_hex = existing_scheme or "#636EFA"
+    current_name = _COLOR_HEX_TO_NAME.get(current_hex, names[0])
+    idx = names.index(current_name) if current_name in names else 0
+    chosen = st.selectbox("🎨 Cor", names, index=idx, key=key)
+    return _NAMED_COLORS[chosen]
 
 
 def render_widget_palette(
@@ -302,8 +335,7 @@ def _configure_pie_chart_ui(
             key="pie_agg",
         )
     with col2:
-        default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
-        color_scheme = st.selectbox("🎨 Paleta", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="pie_scheme")
+        color_scheme = _color_selectbox("pie_scheme", existing.color_scheme if existing else None)
 
     col3, col4 = st.columns(2)
     with col3:
@@ -391,18 +423,7 @@ def _configure_bar_column_ui(
             help="Divide as barras por categoria (melhor com uma única métrica)",
         )
 
-    # Paleta de cores
-    default_scheme = (
-        existing.color_scheme
-        if existing and existing.color_scheme in _COLOR_SCHEMES
-        else "default"
-    )
-    color_scheme = st.selectbox(
-        "🎨 Paleta de cores",
-        _COLOR_SCHEMES,
-        index=_COLOR_SCHEMES.index(default_scheme),
-        key=f"{pfx}_scheme",
-    )
+    color_scheme = _color_selectbox(f"{pfx}_scheme", existing.color_scheme if existing else None)
 
     col3, col4, col5 = st.columns(3)
     with col3:
@@ -511,8 +532,7 @@ def _configure_line_chart_ui(
             help="Cria linhas separadas por grupo",
         )
 
-    default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
-    color_scheme = st.selectbox("🎨 Paleta de cores", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="line_scheme")
+    color_scheme = _color_selectbox("line_scheme", existing.color_scheme if existing else None)
 
     col3, col4, col5 = st.columns(3)
     with col3:
@@ -587,8 +607,7 @@ def _configure_area_chart_ui(
             "🎨 Agrupar por", color_options, index=default_color_idx, key="area_color"
         )
 
-    default_scheme = existing.color_scheme if existing and existing.color_scheme in _COLOR_SCHEMES else "default"
-    color_scheme = st.selectbox("🎨 Paleta de cores", _COLOR_SCHEMES, index=_COLOR_SCHEMES.index(default_scheme), key="area_scheme")
+    color_scheme = _color_selectbox("area_scheme", existing.color_scheme if existing else None)
 
     col3, col4, col5 = st.columns(3)
     with col3:
