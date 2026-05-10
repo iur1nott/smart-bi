@@ -574,7 +574,8 @@ class DashboardBuilderApp:
             on_new_analysis=self._on_new_analysis,
             on_select_analysis=self._on_select_analysis,
             on_settings_click=lambda: set_state("show_settings", True),
-            on_upload=self._process_uploaded_file
+            on_upload=self._process_uploaded_file,
+            on_delete_analysis=self._on_delete_analysis,
         )
 
         # 2. Renderizar cabeçalho
@@ -878,6 +879,14 @@ class DashboardBuilderApp:
             if storage_path:
                 self.data_service.get_cached_data(analysis_id, storage_path=storage_path)
 
+        st.rerun()
+
+    def _on_delete_analysis(self, analysis_id: str) -> None:
+        """Delete an analysis and reset current selection if it was active."""
+        current = self.analysis_service.get_current_analysis()
+        self.analysis_service.delete_analysis(analysis_id)
+        if current and current.id == analysis_id:
+            st.session_state.pop("current_analysis_id", None)
         st.rerun()
 
     def _on_save_settings(self, settings: Dict[str, Any]) -> None:

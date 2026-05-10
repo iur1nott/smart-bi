@@ -14,6 +14,7 @@ def render_sidebar(
     on_select_analysis: Callable,
     on_settings_click: Callable,
     on_upload: Callable,
+    on_delete_analysis: Optional[Callable] = None,
 ) -> None:
     """Sidebar dark com logo, upload, histórico e configurações."""
     with st.sidebar:
@@ -33,14 +34,13 @@ def render_sidebar(
         )
 
         # ── Ações principais ──────────────────────────────────────────────────
-        if st.button("＋  Nova análise", width='stretch', type="primary"):
-            on_new_analysis()
-
-        st.markdown("<div style='margin: 8px 0;'></div>", unsafe_allow_html=True)
-
-        # Upload inline (toggle)
-        if st.button("📂  Carregar dados", width='stretch'):
-            set_state("show_uploader", not get_state("show_uploader"))
+        c_new, c_upload = st.columns(2)
+        with c_new:
+            if st.button("＋  Nova análise", width='stretch', type="primary"):
+                on_new_analysis()
+        with c_upload:
+            if st.button("📂  Carregar", width='stretch'):
+                set_state("show_uploader", not get_state("show_uploader"))
 
         if get_state("show_uploader"):
             with st.container():
@@ -67,9 +67,13 @@ def render_sidebar(
                             set_state("show_uploader", False)
                             on_upload(uploaded_file, analysis_name)
                     with c2:
-                        if st.button("✗", width='stretch'):
+                        if st.button("✗ Cancelar", width='stretch'):
                             set_state("show_uploader", False)
                             st.rerun()
+                else:
+                    if st.button("✗ Cancelar", width='stretch', key="cancel_upload_empty"):
+                        set_state("show_uploader", False)
+                        st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown(
@@ -121,14 +125,19 @@ def render_sidebar(
                     """,
                     unsafe_allow_html=True,
                 )
-                # Botão invisível que cobre o card (Streamlit não suporte onclick em divs)
-                if st.button(
-                    name[:28],
-                    key=f"history_{aid}",
-                    width='stretch',
-                    type="primary" if is_active else "secondary",
-                ):
-                    on_select_analysis(aid)
+                col_sel, col_del = st.columns([5, 1])
+                with col_sel:
+                    if st.button(
+                        name[:22],
+                        key=f"history_{aid}",
+                        width='stretch',
+                        type="primary" if is_active else "secondary",
+                    ):
+                        on_select_analysis(aid)
+                with col_del:
+                    if st.button("🗑", key=f"delete_{aid}", help="Apagar análise"):
+                        if on_delete_analysis:
+                            on_delete_analysis(aid)
         else:
             st.markdown(
                 "<div style='font-size:.8rem;color:#475569;padding:8px 0;'>"
