@@ -49,7 +49,7 @@ _COLOR_SCHEMES: list = [
 ]
 
 
-def _color_selectbox(key: str, existing_scheme: str | None) -> str:
+def _color_selectbox(key: str, existing_scheme: Optional[str]) -> str:
     """Selectbox de cor por nome; devolve o hex value."""
     names = list(_NAMED_COLORS.keys())
     # tenta encontrar nome correspondente ao valor salvo
