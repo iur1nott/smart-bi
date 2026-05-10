@@ -404,6 +404,33 @@ _components.html(
                         sidebar.getAttribute('aria-expanded') === 'false';
         btn.style.display = collapsed ? 'block' : 'none';
     }, 300);
+
+    // Hide Streamlit Cloud branding injected after page load
+    var HIDE_SELECTORS = [
+        '[data-testid="stToolbar"]',
+        '[data-testid="stDecoration"]',
+        '[data-testid="stHeader"]',
+        '[data-testid="stFooter"]',
+        '[data-testid="stToolbarActionButton"]',
+        '[data-testid="stStatusWidget"]',
+        '#MainMenu',
+        'header',
+        'footer',
+    ];
+    function hideBreanding() {
+        HIDE_SELECTORS.forEach(function(sel) {
+            p.querySelectorAll(sel).forEach(function(el) {
+                el.style.setProperty('display', 'none', 'important');
+            });
+        });
+        // Hide any element whose class contains 'viewerBadge' or 'badge'
+        p.querySelectorAll('[class*="viewerBadge"],[class*="BadgeContainer"],[class*="badge_container"]').forEach(function(el) {
+            el.style.setProperty('display', 'none', 'important');
+        });
+    }
+    hideBreanding();
+    // Re-run whenever Streamlit Cloud injects new nodes
+    new MutationObserver(hideBreanding).observe(p.body, { childList: true, subtree: true });
 }());
 </script>
 """,
