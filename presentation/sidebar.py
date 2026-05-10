@@ -34,13 +34,8 @@ def render_sidebar(
         )
 
         # ── Ações principais ──────────────────────────────────────────────────
-        c_new, c_upload = st.columns(2)
-        with c_new:
-            if st.button("＋  Nova análise", width='stretch', type="primary"):
-                on_new_analysis()
-        with c_upload:
-            if st.button("📂  Carregar", width='stretch'):
-                set_state("show_uploader", not get_state("show_uploader"))
+        if st.button("＋  Nova análise", width='stretch', type="primary"):
+            set_state("show_uploader", not get_state("show_uploader"))
 
         if get_state("show_uploader"):
             with st.container():
