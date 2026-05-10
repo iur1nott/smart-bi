@@ -10,60 +10,31 @@ import os
 
 def render_settings_modal(current_settings: Dict[str, Any], on_save: Callable) -> None:
     """Render the settings modal/dialog."""
-    st.markdown("## ⚙️ Settings")
+    st.markdown("## ⚙️ Definições")
 
-    tab1, tab2, tab3 = st.tabs(["Appearance", "Export", "Data"])
-
-    with tab1:
-        st.markdown("### Appearance Settings")
-        theme = st.selectbox(
-            "Theme",
-            ["light", "dark"],
-            index=0 if current_settings.get("theme", "light") == "light" else 1,
-        )
-        grid_visible = st.checkbox(
-            "Show Grid Lines", value=current_settings.get("grid_visible", True)
-        )
-
-    with tab2:
-        st.markdown("### Export Settings")
-        export_format = st.selectbox(
-            "Default Export Format",
-            ["pdf", "latex", "html"],
-            index=["pdf", "latex", "html"].index(
-                current_settings.get("export_format", "pdf")
-            ),
-        )
-        paper_size = st.selectbox(
-            "Paper Size",
-            ["a4", "letter", "legal"],
-            index=["a4", "letter", "legal"].index(
-                current_settings.get("paper_size", "a4")
-            ),
-        )
-        include_comments = st.checkbox(
-            "Include Comments in Export",
-            value=current_settings.get("include_comments", True),
-        )
-
-    with tab3:
-        st.markdown("### Data Settings")
-        auto_save = st.checkbox(
-            "Auto-save Changes", value=current_settings.get("auto_save", True)
-        )
+    st.markdown("### Exportação PDF")
+    paper_size = st.selectbox(
+        "Tamanho do papel",
+        ["a4", "letter", "legal"],
+        index=["a4", "letter", "legal"].index(
+            current_settings.get("paper_size", "a4")
+        ),
+    )
+    include_comments = st.checkbox(
+        "Incluir comentários na exportação",
+        value=current_settings.get("include_comments", True),
+    )
 
     st.markdown("---")
-    if st.button("💾 Save Settings", type="primary"):
+    if st.button("💾 Salvar", type="primary"):
         new_settings = {
-            "theme": theme,
-            "grid_visible": grid_visible,
-            "export_format": export_format,
+            **current_settings,
+            "theme": "light",
             "paper_size": paper_size,
             "include_comments": include_comments,
-            "auto_save": auto_save,
         }
         on_save(new_settings)
-        st.success("Settings saved!")
+        st.success("Definições salvas!")
 
 
 def render_analysis_history(
