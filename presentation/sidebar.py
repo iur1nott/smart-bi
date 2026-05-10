@@ -64,8 +64,8 @@ def render_sidebar(
                     c1, c2 = st.columns(2)
                     with c1:
                         if st.button("✓ Carregar", type="primary", width='stretch'):
-                            on_upload(uploaded_file, analysis_name)
                             set_state("show_uploader", False)
+                            on_upload(uploaded_file, analysis_name)
                     with c2:
                         if st.button("✗", width='stretch'):
                             set_state("show_uploader", False)
