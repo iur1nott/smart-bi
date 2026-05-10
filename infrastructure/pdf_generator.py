@@ -41,10 +41,9 @@ class PDFGenerator:
         if options.orientation == "landscape":
             page_size = (page_size[1], page_size[0])
 
-        output_filename = (
-            f"{analysis.name.replace(' ', '_')}_"
-            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        )
+        base_name = (options.file_name or analysis.name).strip()
+        safe_base = "".join(c if c.isalnum() or c in " _-" else "_" for c in base_name)
+        output_filename = f"{safe_base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         output_path = os.path.join(self.output_dir, output_filename)
 
         doc = SimpleDocTemplate(
@@ -130,12 +129,11 @@ class PDFGenerator:
         story = []
 
         # ── Capa ─────────────────────────────────────────────────────────────
-        if options.header_text:
-            story.append(Paragraph(options.header_text, style_caption))
-            story.append(Spacer(1, 4 * mm))
-
         story.append(Spacer(1, 20 * mm))
-        story.append(Paragraph(analysis.name, style_title))
+        cover_title = (options.file_name or analysis.name).strip()
+        story.append(Paragraph(cover_title, style_title))
+        if options.subtitle:
+            story.append(Paragraph(options.subtitle, style_subtitle))
         story.append(
             Paragraph(
                 f"Exportado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",

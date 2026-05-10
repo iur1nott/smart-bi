@@ -261,6 +261,8 @@ class ExportOptions:
     header_text: str = ""
     footer_text: str = ""
     quality: str = "high"  # low, medium, high
+    file_name: str = ""
+    subtitle: str = ""
 
     VALID_FORMATS = {"pdf", "latex", "html"}
     VALID_PAPER_SIZES = {"a4", "letter", "legal"}

@@ -1231,8 +1231,9 @@ class DashboardBuilderApp:
                 paper_size=options.get("paper_size", "a4"),
                 orientation=options.get("orientation", "portrait"),
                 include_comments=options.get("include_comments", True),
-                header_text=options.get("header_text", ""),
                 footer_text=options.get("footer_text", ""),
+                file_name=options.get("file_name", ""),
+                subtitle=options.get("subtitle", ""),
             )
 
             output_path = self.pdf_generator.generate_pdf(

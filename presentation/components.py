@@ -136,13 +136,22 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
     with col2:
         orientation = st.selectbox("Orientação", ["Portrait", "Landscape"], index=0)
 
+    file_name = st.text_input(
+        "Nome do arquivo",
+        value=analysis.name,
+        placeholder="Nome do PDF…",
+    )
+    subtitle = st.text_input(
+        "Subtítulo / Descrição (opcional)",
+        placeholder="Ex: Relatório mensal de vendas…",
+    )
+
     col3, col4 = st.columns(2)
     with col3:
         include_comments = st.checkbox("Incluir comentários", value=True)
     with col4:
         st.caption("Filtros ativos são aplicados automaticamente no PDF.")
 
-    header_text = st.text_input("Cabeçalho (opcional)", placeholder="Texto do cabeçalho…")
     footer_text = st.text_input("Rodapé (opcional)", placeholder="Texto do rodapé…")
 
     st.markdown("---")
@@ -161,8 +170,9 @@ def render_export_dialog(analysis, on_export: Callable) -> None:
                 "paper_size": paper_size.lower(),
                 "orientation": orientation.lower(),
                 "include_comments": include_comments,
-                "header_text": header_text,
                 "footer_text": footer_text,
+                "file_name": file_name.strip() or analysis.name,
+                "subtitle": subtitle.strip(),
             }
             result = on_export(analysis, export_options)
 
