@@ -71,6 +71,10 @@ class ChartFactory:
     def export_figure_to_bytes(
         self, fig: go.Figure, format: str = "png", scale: float = 2.0
     ) -> bytes:
+        try:
+            pio.kaleido.scope.chromium_args = ("--no-sandbox",)
+        except Exception:
+            pass
         return pio.to_image(fig, format=format, scale=scale)
 
     def export_figure_to_base64(
@@ -89,8 +93,8 @@ class ChartFactory:
         import math
         from PIL import Image, ImageDraw, ImageFont
 
-        W, H = 700, 380
-        ML, MR, MT, MB = 80, 30, 40, 70  # margens
+        W, H = 1100, 550
+        ML, MR, MT, MB = 100, 40, 50, 100  # margens
 
         PALETTE = [
             (78, 121, 167), (242, 142, 43), (225, 87, 89), (118, 183, 178),
@@ -101,6 +105,15 @@ class ChartFactory:
         def hex_to_rgb(h: str) -> tuple:
             h = h.lstrip("#")
             return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+        # usa a cor escolhida pelo utilizador como primeira cor da paleta
+        _user_hex = (config.color_scheme or "").strip()
+        if _user_hex.startswith("#") and len(_user_hex) == 7:
+            try:
+                _ur, _ug, _ub = hex_to_rgb(_user_hex)
+                PALETTE[0] = (_ur, _ug, _ub)
+            except Exception:
+                pass
 
         def palette_color(i: int, alpha: int = 255) -> tuple:
             r, g, b = PALETTE[i % len(PALETTE)]
@@ -223,7 +236,7 @@ class ChartFactory:
             # ── Linha / Área ─────────────────────────────────────────────────
             elif vtype in (VisualizationType.LINE_CHART, VisualizationType.AREA_CHART):
                 x_col = config.x_column
-                y_col = config.y_column
+                y_col = config.y_column or (config.y_columns[0] if config.y_columns else None)
                 if x_col and y_col and x_col in df.columns and y_col in df.columns:
                     agged = self._aggregate(df, x_col, [y_col], agg)
                     cats  = agged[x_col].cast(pl.String).to_list()
