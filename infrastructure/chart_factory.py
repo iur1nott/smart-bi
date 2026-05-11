@@ -66,6 +66,17 @@ class ChartFactory:
             )
 
         self._apply_common_style(fig, config)
+
+        # Coluna com muitas categorias: aplica margem após _apply_common_style
+        # para não ser sobrescrita
+        if vtype == VisualizationType.COLUMN_CHART and config.x_column and config.x_column in df.columns:
+            try:
+                n_cats = df[config.x_column].n_unique()
+            except Exception:
+                n_cats = 0
+            if n_cats > 6:
+                fig.update_layout(margin=dict(b=160))
+
         return fig
 
     def export_figure_to_bytes(
