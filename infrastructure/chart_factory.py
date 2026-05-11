@@ -104,8 +104,8 @@ class ChartFactory:
         import math
         from PIL import Image, ImageDraw, ImageFont
 
-        W, H = 1100, 550
-        ML, MR, MT, MB = 100, 40, 50, 100  # margens
+        W, H = 1200, 650
+        ML, MR, MT, MB = 110, 40, 55, 180  # margens — MB grande para rótulos rotacionados
 
         PALETTE = [
             (78, 121, 167), (242, 142, 43), (225, 87, 89), (118, 183, 178),
@@ -142,9 +142,9 @@ class ChartFactory:
         draw = ImageDraw.Draw(img, "RGBA")
 
         try:
-            font_sm = ImageFont.load_default(size=9)
-            font_md = ImageFont.load_default(size=11)
-            font_bold = ImageFont.load_default(size=12)
+            font_sm = ImageFont.load_default(size=12)
+            font_md = ImageFont.load_default(size=14)
+            font_bold = ImageFont.load_default(size=16)
         except Exception:
             font_sm = font_md = font_bold = ImageFont.load_default()
 
@@ -164,14 +164,17 @@ class ChartFactory:
             draw.line([(cx0, cy1), (cx1, cy1)], fill=GRAY_AXIS, width=1)
 
         def draw_rotated_text(text, cx, cy, angle=-45, font=None, fill=(71, 85, 105)):
-            """Draw text rotated by `angle` degrees, centered at (cx, cy)."""
+            """Draw text rotated by `angle` degrees, top-left anchor at (cx, cy)."""
             font = font or font_sm
-            tmp = Image.new("RGBA", (200, 20), (0, 0, 0, 0))
+            tmp = Image.new("RGBA", (220, 22), (0, 0, 0, 0))
             tmp_draw = ImageDraw.Draw(tmp)
             tmp_draw.text((0, 0), text, font=font, fill=fill)
             rotated = tmp.rotate(angle, expand=True)
             rx = int(cx - rotated.width / 2)
             ry = int(cy)
+            # clamp so label never goes outside image bounds
+            rx = max(0, min(rx, W - rotated.width))
+            ry = max(0, min(ry, H - rotated.height))
             img.paste(rotated, (rx, ry), rotated)
 
         def draw_y_grid(min_v, max_v, n=5):
