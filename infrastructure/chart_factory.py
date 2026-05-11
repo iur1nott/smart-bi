@@ -568,6 +568,7 @@ class ChartFactory:
         )
         if n_cats > 6:
             fig.update_xaxes(tickangle=-45)
+            fig.update_layout(margin=dict(b=150))
         return fig
 
     def _create_bar_chart(
@@ -637,7 +638,7 @@ class ChartFactory:
     ) -> go.Figure:
         """Area chart with optional aggregation and value labels."""
         x_col = config.x_column
-        y_col = config.y_column
+        y_col = config.y_column or (config.y_columns[0] if config.y_columns else None)
         if not x_col or not y_col:
             return self._create_empty_figure("Selecione colunas X e Y")
 
@@ -800,7 +801,7 @@ class ChartFactory:
             plot_bgcolor="rgba(248,248,248,1)",
             font=dict(family="Arial, sans-serif", size=12),
             title_font=dict(size=16),
-            margin=dict(l=60, r=40, t=60, b=60),
+            margin=dict(l=60, r=40, t=60, b=80),
         )
 
         if config.show_grid:
