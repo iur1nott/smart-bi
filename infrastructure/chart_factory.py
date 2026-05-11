@@ -567,8 +567,7 @@ class ChartFactory:
             hovermode="x unified",
         )
         if n_cats > 6:
-            fig.update_xaxes(tickangle=-45)
-            fig.update_layout(margin=dict(b=150))
+            fig.update_xaxes(tickangle=-45, automargin=True)
         return fig
 
     def _create_bar_chart(
@@ -711,7 +710,7 @@ class ChartFactory:
         self, df: pl.DataFrame, config: VisualizationConfig
     ) -> go.Figure:
         """Histogram (distribution of one column)."""
-        x_col = config.x_column
+        x_col = config.x_column or config.y_column or (config.y_columns[0] if config.y_columns else None)
         if not x_col:
             return self._create_empty_figure("Selecione uma coluna para o histograma")
 
@@ -806,11 +805,11 @@ class ChartFactory:
 
         if config.show_grid:
             fig.update_xaxes(
-                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
+                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)", automargin=True
             )
             fig.update_yaxes(
-                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)"
+                showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.5)", automargin=True
             )
         else:
-            fig.update_xaxes(showgrid=False)
-            fig.update_yaxes(showgrid=False)
+            fig.update_xaxes(showgrid=False, automargin=True)
+            fig.update_yaxes(showgrid=False, automargin=True)

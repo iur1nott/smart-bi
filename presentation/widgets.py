@@ -137,11 +137,10 @@ def render_visualization_config_dialog(
         VisualizationType.METRIC_CARD:  "💳",
     }
     icon = _ICONS.get(viz_type, "📊")
-    action = "Novo" if is_new else "Editar"
     label = viz_type.value.replace("_", " ").title()
     st.markdown(
         f"<span style='font-size:1.05rem;font-weight:600;color:#1E293B'>"
-        f"{icon} {action} — {label}</span>",
+        f"{icon} {label}</span>",
         unsafe_allow_html=True,
     )
     st.markdown("---")
