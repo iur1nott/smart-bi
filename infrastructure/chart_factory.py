@@ -177,13 +177,16 @@ class ChartFactory:
             ry = max(0, min(ry, H - rotated.height))
             img.paste(rotated, (rx, ry), rotated)
 
-        def draw_y_grid(min_v, max_v, n=5):
+        def draw_y_grid(min_v, max_v, n=5, integer_labels=False):
             rng = max_v - min_v or 1
             for i in range(n + 1):
                 val = min_v + rng * i / n
                 y = cy1 - (val - min_v) / rng * ch
                 draw.line([(cx0, y), (cx1, y)], fill=GRAY_GRID, width=1)
-                label = f"{val:,.0f}" if abs(val) >= 10 else f"{val:.1f}"
+                if integer_labels:
+                    label = f"{round(val):,}"
+                else:
+                    label = f"{val:,.0f}" if abs(val) >= 10 else f"{val:.1f}"
                 draw.text((cx0 - 4, y - 5), label, fill=GRAY_LABEL, font=font_sm, anchor="rm")
 
         def val_to_y(v, min_v, max_v):
@@ -342,9 +345,9 @@ class ChartFactory:
                         for v in vals:
                             bi = min(int((v - min_v) / bin_w), n_bins - 1)
                             counts[bi] += 1
-                        max_c = max(counts) * 1.1 or 1
+                        max_c = float(max(counts) + 1)
                         draw_axes()
-                        draw_y_grid(0, max_c)
+                        draw_y_grid(0, max_c, integer_labels=True)
                         bw = cw / n_bins
                         for i, c in enumerate(counts):
                             bh = c / max_c * ch
@@ -353,6 +356,13 @@ class ChartFactory:
                                 [(bx + 1, cy1 - bh), (bx + bw - 1, cy1)],
                                 fill=palette_color(0),
                             )
+                        # x-axis bin boundary labels
+                        step_bins = max(1, n_bins // 8)
+                        for i in range(0, n_bins + 1, step_bins):
+                            bin_val = min_v + i * bin_w
+                            lbl = f"{bin_val:,.0f}" if abs(bin_val) >= 10 else f"{bin_val:.1f}"
+                            bx = cx0 + i * bw
+                            draw.text((bx, cy1 + 4), lbl, fill=GRAY_LABEL, font=font_sm, anchor="mt")
 
             # ── Box Plot ─────────────────────────────────────────────────────
             elif vtype == VisualizationType.BOX_PLOT:
