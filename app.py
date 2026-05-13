@@ -746,7 +746,9 @@ class DashboardBuilderApp:
 
         from presentation.widgets import render_widget_palette
         render_widget_palette(
-            current_analysis.data_schema, self._start_visualization_config
+            current_analysis.data_schema,
+            self._start_visualization_config,
+            measures=list(getattr(current_analysis, "measures", None) or []),
         )
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -905,13 +907,30 @@ class DashboardBuilderApp:
         if not viz_type or not current_analysis or not current_analysis.data_schema:
             return
 
-        # MEASURES não precisa de dialog — cria direto
+        # MEASURES → abre o dialog dedicado (não cria card no slide)
         if viz_type == VisualizationType.MEASURES:
-            config = VisualizationConfig(
-                visualization_type=VisualizationType.MEASURES,
-                title="Medidas Calculadas",
+            from presentation.widgets import render_measures_dialog
+            measures = list(getattr(current_analysis, "measures", None) or [])
+            all_cols = (
+                [c.name for c in current_analysis.data_schema.columns]
+                if current_analysis.data_schema else []
             )
-            self._create_visualization_with_config(viz_type, config)
+
+            def on_save_measures(updated: list):
+                self._on_update_measures(updated)
+                set_state("configuring_new_viz", None)
+                st.rerun()
+
+            def on_cancel_measures():
+                set_state("configuring_new_viz", None)
+                st.rerun()
+
+            render_measures_dialog(
+                measures=measures,
+                all_cols=all_cols,
+                on_save=on_save_measures,
+                on_cancel=on_cancel_measures,
+            )
             return
 
         from presentation.widgets import render_visualization_config_dialog

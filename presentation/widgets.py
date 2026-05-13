@@ -61,17 +61,16 @@ def _color_selectbox(key: str, existing_scheme: Optional[str]) -> str:
 
 
 def render_widget_palette(
-    data_schema: Optional[DataSchema], on_add_visualization: Callable
+    data_schema: Optional[DataSchema],
+    on_add_visualization: Callable,
+    measures: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """Palette vertical de adição de visualizações (painel direito)."""
     if not data_schema:
         st.info("📁 Carregue dados para adicionar visualizações")
         return
 
-    _GROUPS = [
-        ("Medidas", [
-            ("📐 Medidas",    VisualizationType.MEASURES),
-        ]),
+    _CHART_GROUPS = [
         ("Gráficos", [
             ("📊 Colunas",   VisualizationType.COLUMN_CHART),
             ("📉 Barras",    VisualizationType.BAR_CHART),
@@ -88,7 +87,41 @@ def render_widget_palette(
         ]),
     ]
 
-    for group_label, items in _GROUPS:
+    # ── Seção Medidas ─────────────────────────────────────────────────────────
+    st.markdown(
+        "<div style='font-size:.68rem;color:#94A3B8;font-weight:600;"
+        "text-transform:uppercase;letter-spacing:.06em;"
+        "margin:10px 0 4px;'>Medidas</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button("📐 Medidas", key="widget_measures", width='stretch', help="Gerir medidas calculadas"):
+        st.session_state.configuring_new_viz = VisualizationType.MEASURES
+        st.rerun()
+
+    # Lista de medidas existentes com toggle de fórmula
+    if measures:
+        for m in measures:
+            name = m.get("name", "")
+            expr = m.get("expression", "")
+            toggle_key = f"show_meas_{name}"
+            if st.button(
+                f"  {name}",
+                key=f"btn_meas_{name}",
+                width='stretch',
+                help="Clique para ver o cálculo",
+            ):
+                st.session_state[toggle_key] = not st.session_state.get(toggle_key, False)
+                st.rerun()
+            if st.session_state.get(toggle_key, False):
+                st.markdown(
+                    f"<div style='font-size:.72rem;color:#94A3B8;padding:2px 8px 6px;"
+                    f"font-family:monospace;background:rgba(255,255,255,.04);"
+                    f"border-left:2px solid #3B82F6;margin-bottom:4px;'>{expr}</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # ── Restante dos grupos ───────────────────────────────────────────────────
+    for group_label, items in _CHART_GROUPS:
         st.markdown(
             f"<div style='font-size:.68rem;color:#94A3B8;font-weight:600;"
             f"text-transform:uppercase;letter-spacing:.06em;"
@@ -104,6 +137,116 @@ def render_widget_palette(
             ):
                 st.session_state.configuring_new_viz = viz_type
                 st.rerun()
+
+
+@st.dialog("📐 Medidas Calculadas", width="large")
+def render_measures_dialog(
+    measures: List[Dict[str, Any]],
+    all_cols: List[str],
+    on_save: Callable,
+    on_cancel: Callable,
+) -> None:
+    """Modal para criar e gerenciar medidas calculadas."""
+    _measures: List[Dict[str, Any]] = list(measures)
+    _OPS = ["+", "-", "*", "/"]
+    parts_key = "mparts_dialog"
+    default_col = all_cols[0] if all_cols else ""
+
+    # ── Medidas existentes ────────────────────────────────────────────────────
+    if _measures:
+        st.markdown("**Medidas existentes**")
+        to_del = []
+        for i, m in enumerate(_measures):
+            c1, c2, c3 = st.columns([3, 6, 1])
+            with c1:
+                st.text_input("Nome", value=m.get("name", ""), key=f"mname_dlg_{i}",
+                              disabled=True, label_visibility="collapsed")
+            with c2:
+                st.text_input("Cálculo", value=m.get("expression", ""), key=f"mexpr_dlg_{i}",
+                              disabled=True, label_visibility="collapsed")
+            with c3:
+                if st.button("❌", key=f"mdel_dlg_{i}", help="Remover"):
+                    to_del.append(i)
+        if to_del:
+            on_save([m for j, m in enumerate(_measures) if j not in to_del])
+            st.rerun()
+        st.markdown("---")
+
+    # ── Nova medida ───────────────────────────────────────────────────────────
+    st.markdown("**➕ Nova Medida**")
+    st.caption("Combine colunas com operadores `+  −  ×  ÷`.")
+
+    if parts_key not in st.session_state:
+        st.session_state[parts_key] = [
+            {"op": "",  "col": default_col},
+            {"op": "/", "col": default_col},
+        ]
+    parts: list = st.session_state[parts_key]
+
+    new_name = st.text_input("Nome da Medida", placeholder="ex: Ticket Médio", key="mnew_name_dlg")
+
+    to_remove_parts: list = []
+    for i, part in enumerate(parts):
+        if i == 0:
+            c_val, c_rm = st.columns([8, 1])
+        else:
+            c_op, c_val, c_rm = st.columns([1, 7, 1])
+            with c_op:
+                cur_op = part["op"] if part["op"] in _OPS else "/"
+                parts[i]["op"] = st.selectbox(
+                    "op", _OPS, index=_OPS.index(cur_op),
+                    key=f"mop_dlg_{i}", label_visibility="collapsed",
+                )
+        with c_val:
+            if all_cols:
+                cur_col = part["col"] if part["col"] in all_cols else default_col
+                parts[i]["col"] = st.selectbox(
+                    "coluna", all_cols, index=all_cols.index(cur_col),
+                    key=f"mcol_dlg_{i}", label_visibility="collapsed",
+                )
+            else:
+                st.caption("Sem colunas disponíveis")
+        with c_rm:
+            if len(parts) > 1:
+                if st.button("❌", key=f"mrm_dlg_{i}"):
+                    to_remove_parts.append(i)
+
+    if to_remove_parts:
+        st.session_state[parts_key] = [p for j, p in enumerate(parts) if j not in to_remove_parts]
+        st.rerun()
+
+    if st.button("➕ Adicionar campo", key="madd_part_dlg"):
+        parts.append({"op": "+", "col": default_col})
+        st.session_state[parts_key] = parts
+        st.rerun()
+
+    tokens: list = []
+    for i, part in enumerate(parts):
+        col = part.get("col", "")
+        if not col:
+            continue
+        if i > 0 and tokens:
+            tokens.append(part.get("op", "+"))
+        tokens.append(f"[{col}]")
+    expr = " ".join(tokens)
+    if expr:
+        st.caption(f"**Expressão:** `{expr}`")
+
+    st.markdown("---")
+    col_save, col_close = st.columns(2)
+    with col_save:
+        if st.button("💾 Adicionar Medida", key="msave_dlg", type="primary", width='stretch'):
+            name = new_name.strip()
+            if name and expr:
+                on_save(list(_measures) + [{"name": name, "expression": expr}])
+                if parts_key in st.session_state:
+                    del st.session_state[parts_key]
+                st.rerun()
+            else:
+                st.warning("Preencha o nome e adicione ao menos um campo.")
+    with col_close:
+        if st.button("✗ Fechar", key="mclose_dlg", width='stretch'):
+            on_cancel()
 
 
 @st.dialog("Configurar Visualização", width="large")

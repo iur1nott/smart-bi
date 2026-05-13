@@ -490,26 +490,39 @@ def render_visualization(
             unsafe_allow_html=True,
         )
     with col_actions:
-        btn_cols = st.columns(2) if not is_measures else st.columns(1)
-        if not is_measures:
-            with btn_cols[0]:
-                if st.button("✏️", key=f"edit_{viz.id}", help="Configurar"):
+        btn_cols = st.columns(2)
+        with btn_cols[0]:
+            edit_help = "Gerir medidas" if is_measures else "Configurar"
+            if st.button("✏️", key=f"edit_{viz.id}", help=edit_help):
+                if is_measures:
+                    # Abre o dialog de medidas via session_state
+                    st.session_state.configuring_new_viz = VisualizationType.MEASURES
+                else:
                     st.session_state.editing_viz_id = viz.id
                     st.session_state.editing_slide_id = slide_id
-                    st.rerun()
-            with btn_cols[1]:
-                if st.button("🗑", key=f"delete_{viz.id}", help="Excluir"):
-                    on_delete(slide_id, viz.id)
-                    st.rerun()
-        else:
-            with btn_cols[0]:
-                if st.button("🗑", key=f"delete_{viz.id}", help="Excluir"):
-                    on_delete(slide_id, viz.id)
-                    st.rerun()
+                st.rerun()
+        with btn_cols[1]:
+            if st.button("🗑", key=f"delete_{viz.id}", help="Excluir"):
+                on_delete(slide_id, viz.id)
+                st.rerun()
 
     # ── Conteúdo ──────────────────────────────────────────────────────────────
     if is_measures:
-        render_measures_panel(viz.id, analysis, on_update_measures, df=df)
+        measures: list = list(getattr(analysis, "measures", None) or [])
+        if measures:
+            for m in measures:
+                name = m.get("name", "")
+                expr = m.get("expression", "")
+                st.markdown(
+                    f"<div style='display:flex;align-items:baseline;gap:8px;"
+                    f"padding:4px 0;border-bottom:1px solid rgba(0,0,0,.06);'>"
+                    f"<span style='font-size:.82rem;font-weight:600;color:#1E293B;'>{name}</span>"
+                    f"<span style='font-size:.75rem;color:#64748B;font-family:monospace;'>{expr}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("Nenhuma medida ainda. Clique em ✏️ para adicionar.")
 
     elif viz.config:
         # Filtros — render_viz_filters já contém o expander próprio com badge
